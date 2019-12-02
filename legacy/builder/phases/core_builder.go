@@ -95,8 +95,8 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 	targetCoreFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_RUNTIME_PLATFORM_PATH)
 	
 	if coreModel != nil {
-		coreModel.SourceDirectory = coreFolder
-		coreModel.Name = buildProperties[constants.LIBRARY_NAME]
+		coreModel.SourceDirectory = coreFolder.String()
+		coreModel.Name = buildProperties.Get("name")
 	}	
 
 	includes := []string{}

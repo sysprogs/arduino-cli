@@ -73,6 +73,11 @@ func (resolver *Cpp) AlternativesFor(header string) libraries.List {
 	return resolver.headers[header]
 }
 
+func (resolver *Cpp) ExportMap() map[string]libraries.List {
+	return resolver.headers;
+}
+
+
 // ResolveFor finds the most suitable library for the specified combination of
 // header and architecture. If no libraries provides the requested header, nil is returned
 func (resolver *Cpp) ResolveFor(header, architecture string) *libraries.Library {

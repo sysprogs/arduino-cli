@@ -30,8 +30,6 @@
 package phases
 
 import (
-	"os"
-	"path/filepath"
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"

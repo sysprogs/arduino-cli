@@ -106,12 +106,12 @@ func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *p
 		if codeModel != nil {
 			libraryModel = new(types.CodeModelLibrary)
 			libraryModel.Name = library.Name
-			libraryModel.SourceDirectory = library.SrcFolder
+			libraryModel.SourceDirectory = library.SourceDir.String()
 			codeModel.Libraries = append(codeModel.Libraries, libraryModel)
 		}
 
 		var effectiveProperties = buildProperties
-		if unoptimize && library.Properties["supports_unoptimized_builds"] != "false" {
+		if unoptimize && library.Properties.Get("supports_unoptimized_builds") != "false" {
 			effectiveProperties = unoptimizedProperties
 		}
 		

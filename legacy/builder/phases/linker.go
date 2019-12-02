@@ -64,7 +64,7 @@ func (s *Linker) Run(ctx *types.Context) error {
 	
 	if ctx.CodeModelBuilder != nil {
 		//Just compute the linker command line (even without the full object list), we are not actually linking and are only interested in the output file name
-		pattern := buildProperties[constants.RECIPE_C_COMBINE_PATTERN]
+		pattern := buildProperties.Get(constants.RECIPE_C_COMBINE_PATTERN)
 		commandLine := buildProperties.ExpandPropsInString(pattern)
 		ctx.CodeModelBuilder.LinkerCommandLine = commandLine
 		return nil

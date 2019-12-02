@@ -1,5 +1,9 @@
 package types
 
+import (
+	"github.com/arduino/arduino-cli/arduino/libraries"
+)
+
 type CodeModelGCCInvocation struct {
 	GCC        string
 	InputFile  string
@@ -18,7 +22,7 @@ type KnownLibrary struct {
 	Folder        string
 	SrcFolder     string
 	UtilityFolder string
-	Layout        LibraryLayout
+	Layout        libraries.LibraryLayout
 	Name          string
 	RealName      string
 	IsLegacy      bool
@@ -35,6 +39,11 @@ type KnownLibrary struct {
 type KnownHeader struct {
 	Name               string
 	LibraryDirectories []string
+}
+
+type KeyValuePair struct {
+	Key   string
+	Value string
 }
 
 type CodeModelBuilder struct {

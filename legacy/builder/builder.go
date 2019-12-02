@@ -45,6 +45,7 @@ import (
 	"github.com/arduino/arduino-cli/legacy/builder/phases"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
+	"github.com/arduino/arduino-cli/arduino/libraries"
 )
 
 var MAIN_FILE_VALID_EXTENSIONS = map[string]bool{".ino": true, ".pde": true}
@@ -118,15 +119,15 @@ func (s *Builder) Run(ctx *types.Context) error {
 	mainErr := runCommands(ctx, commands, true)
 	
 	if ctx.CodeModelBuilder != nil {
-		var librariesByLocation = map[string]*types.Library{}
+		var librariesByLocation = map[string]*libraries.Library{}
 
-		for header, libraries := range ctx.HeaderToLibraries {
+		for header, libraries := range ctx.LibrariesResolver.ExportMap() {
 			var knownHeader = new(types.KnownHeader)
 
 			knownHeader.Name = header
 			for _, library := range libraries {
-				knownHeader.LibraryDirectories = append(knownHeader.LibraryDirectories, library.SrcFolder)
-				librariesByLocation[library.Folder] = library
+				knownHeader.LibraryDirectories = append(knownHeader.LibraryDirectories, library.SourceDir.String())
+				librariesByLocation[library.InstallDir.String()] = library
 			}
 
 			ctx.CodeModelBuilder.Prototypes = ctx.Prototypes
@@ -136,26 +137,26 @@ func (s *Builder) Run(ctx *types.Context) error {
 		for _, library := range librariesByLocation {
 			var knownLib = new(types.KnownLibrary)
 
-			knownLib.Folder = library.Folder
-			knownLib.SrcFolder = library.SrcFolder
-			knownLib.UtilityFolder = library.UtilityFolder
+			knownLib.Folder = library.InstallDir.String()
+			knownLib.SrcFolder = library.SourceDir.String()
+			knownLib.UtilityFolder = library.UtilityDir.String()
 			knownLib.Layout = library.Layout
 			knownLib.Name = library.Name
 			knownLib.RealName = library.RealName
 			knownLib.IsLegacy = library.IsLegacy
-			knownLib.Version = library.Version
+			knownLib.Version = library.Version.String()
 			knownLib.Author = library.Author
 			knownLib.Maintainer = library.Maintainer
 			knownLib.Sentence = library.Sentence
 			knownLib.Paragraph = library.Paragraph
-			knownLib.URL = library.URL
+			knownLib.URL = library.Website
 			knownLib.Category = library.Category
 			knownLib.License = library.License
 
 			ctx.CodeModelBuilder.KnownLibraries = append(ctx.CodeModelBuilder.KnownLibraries, knownLib)
 		}
 
-		for key, value := range ctx.BuildProperties {
+		for key, value := range ctx.BuildProperties.AsMap() {
 			var kv = new(types.KeyValuePair)
 			kv.Key = key
 			kv.Value = value

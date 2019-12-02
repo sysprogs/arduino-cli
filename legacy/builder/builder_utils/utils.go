@@ -40,7 +40,6 @@ import (
 
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
-	"github.com/arduino/arduino-builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	"github.com/arduino/go-paths-helper"
@@ -115,25 +114,19 @@ func ReplaceOptimizationFlags(str string) string {
 	return strings.Join(tmp, " ")
 }
 
-func RemoveOptimizationFromBuildProperties(properties properties.Map) properties.Map {
-	var result = make(map[string]string)
-	for k, v := range properties {
-		result[k] = v
-	}
+func RemoveOptimizationFromBuildProperties(properties *properties.Map) *properties.Map {
+	var result = properties.Clone()
 
-	result["compiler.c.flags"] = ReplaceOptimizationFlags(result["compiler.c.flags"])
-	result["compiler.cpp.flags"] = ReplaceOptimizationFlags(result["compiler.cpp.flags"])
+	result.Set("compiler.c.flags", ReplaceOptimizationFlags(result.Get("compiler.c.flags")))
+	result.Set("compiler.cpp.flags", ReplaceOptimizationFlags(result.Get("compiler.cpp.flags")))
 	return result
 }
 
-func ExpandSysprogsExtensionProperties(properties properties.Map) properties.Map {
-	var result = make(map[string]string)
-	for k, v := range properties {
-		result[k] = v
-	}
+func ExpandSysprogsExtensionProperties(properties *properties.Map) *properties.Map {
+	var result = properties.Clone()
 
-	result["compiler.c.flags"] += " " + result["com.sysprogs.extraflags"]
-	result["compiler.cpp.flags"] += " " + result["com.sysprogs.extraflags"]
+	result.Set("compiler.c.flags", result.Get("compiler.c.flags") + " " + result.Get("com.sysprogs.extraflags"))
+	result.Set("compiler.cpp.flags", result.Get("compiler.cpp.flags") + " " + result.Get("com.sysprogs.extraflags"))
 	return result
 }
 
@@ -287,15 +280,15 @@ func compileFileWithRecipe(ctx *types.Context, sourcePath *paths.Path, source *p
 
 	if libraryModel != nil {
 		//We are not actually building, just dumping the model
-		command, err := PrepareCommandForRecipe(properties, recipe, false, false, false, logger)
+		command, err := PrepareCommandForRecipe(ctx, properties, recipe, false)
 		if err != nil {
-			return "", i18n.WrapError(err)
+			return nil, i18n.WrapError(err)
 		}
 
 		var invocation = new(types.CodeModelGCCInvocation)
 		invocation.GCC = command.Path
-		invocation.InputFile = source
-		invocation.ObjectFile = properties[constants.BUILD_PROPERTIES_OBJECT_FILE]
+		invocation.InputFile = source.String()
+		invocation.ObjectFile = properties.Get(constants.BUILD_PROPERTIES_OBJECT_FILE)
 		invocation.Arguments = command.Args[1:]
 		libraryModel.Invocations = append(libraryModel.Invocations, invocation)
 	} else {	
@@ -506,7 +499,7 @@ func ArchiveCompiledFiles(ctx *types.Context, buildPath *paths.Path, archiveFile
 
 	rebuildArchive := false
 	if libraryModel != nil {
-		libraryModel.ArchiveFile = archiveFilePath
+		libraryModel.ArchiveFile = archiveFilePath.String()
 	} else {
 		if archiveFileStat, err := archiveFilePath.Stat(); err == nil {
 
