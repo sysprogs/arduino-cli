@@ -137,14 +137,26 @@ func (s *Builder) Run(ctx *types.Context) error {
 		for _, library := range librariesByLocation {
 			var knownLib = new(types.KnownLibrary)
 
-			knownLib.Folder = library.InstallDir.String()
-			knownLib.SrcFolder = library.SourceDir.String()
-			knownLib.UtilityFolder = library.UtilityDir.String()
+			if (library.InstallDir != nil) {
+				knownLib.Folder = library.InstallDir.String()
+			}
+			
+			if (library.SourceDir != nil) {
+				knownLib.SrcFolder = library.SourceDir.String()
+			}
+			
+			if library.UtilityDir != nil {
+				knownLib.UtilityFolder = library.UtilityDir.String()
+			}
+			
 			knownLib.Layout = library.Layout
 			knownLib.Name = library.Name
 			knownLib.RealName = library.RealName
 			knownLib.IsLegacy = library.IsLegacy
-			knownLib.Version = library.Version.String()
+			
+			if (library.Version != nil) {
+				knownLib.Version = library.Version.String()
+			}
 			knownLib.Author = library.Author
 			knownLib.Maintainer = library.Maintainer
 			knownLib.Sentence = library.Sentence
