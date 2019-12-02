@@ -30,6 +30,8 @@
 package phases
 
 import (
+	"os"
+	"path/filepath"
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
@@ -41,14 +43,28 @@ type SketchBuilder struct{}
 
 func (s *SketchBuilder) Run(ctx *types.Context) error {
 	sketchBuildPath := ctx.SketchBuildPath
-	buildProperties := ctx.BuildProperties
+	var buildProperties = ctx.BuildProperties
 	includes := utils.Map(ctx.IncludeFolders.AsStrings(), utils.WrapWithHyphenI)
 
 	if err := sketchBuildPath.MkdirAll(); err != nil {
 		return i18n.WrapError(err)
 	}
+	
+	var sketchModel *types.CodeModelLibrary
+	if ctx.CodeModelBuilder != nil {
+		sketchModel = new(types.CodeModelLibrary)
+		ctx.CodeModelBuilder.Sketch = sketchModel
+	} else {
+		sketchModel = nil
+	}
 
-	objectFiles, err := builder_utils.CompileFiles(ctx, sketchBuildPath, false, sketchBuildPath, buildProperties, includes)
+	if ctx.UnoptimizeSketch {
+		buildProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
+	}
+	
+	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties)	
+
+	objectFiles, err := builder_utils.CompileFiles(ctx, sketchBuildPath, false, sketchBuildPath, buildProperties, includes, sketchModel)
 	if err != nil {
 		return i18n.WrapError(err)
 	}
@@ -56,7 +72,7 @@ func (s *SketchBuilder) Run(ctx *types.Context) error {
 	// The "src/" subdirectory of a sketch is compiled recursively
 	sketchSrcPath := sketchBuildPath.Join(constants.SKETCH_FOLDER_SRC)
 	if sketchSrcPath.IsDir() {
-		srcObjectFiles, err := builder_utils.CompileFiles(ctx, sketchSrcPath, true, sketchSrcPath, buildProperties, includes)
+		srcObjectFiles, err := builder_utils.CompileFiles(ctx, sketchSrcPath, true, sketchSrcPath, buildProperties, includes, sketchModel)
 		if err != nil {
 			return i18n.WrapError(err)
 		}

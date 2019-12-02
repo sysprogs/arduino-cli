@@ -89,6 +89,12 @@ type Context struct {
 	PrototypesSection           string
 	PrototypesLineWhereToInsert int
 	Prototypes                  []*Prototype
+	
+	CodeModelBuilder     *CodeModelBuilder
+	CodeModelBuilderFile string
+	UnoptimizeSketch     bool
+	UnoptimizeCore       bool
+	UnoptimizeLibraries  bool	
 
 	// Verbosity settings
 	Verbose           bool

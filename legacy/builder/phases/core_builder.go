@@ -46,7 +46,7 @@ type CoreBuilder struct{}
 func (s *CoreBuilder) Run(ctx *types.Context) error {
 	coreBuildPath := ctx.CoreBuildPath
 	coreBuildCachePath := ctx.CoreBuildCachePath
-	buildProperties := ctx.BuildProperties
+	var buildProperties = ctx.BuildProperties
 
 	if err := coreBuildPath.MkdirAll(); err != nil {
 		return i18n.WrapError(err)
@@ -64,7 +64,19 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 		}
 	}
 
-	archiveFile, objectFiles, err := compileCore(ctx, coreBuildPath, coreBuildCachePath, buildProperties)
+	var coreModel *types.CodeModelLibrary
+	if ctx.CodeModelBuilder != nil {
+		coreModel = new(types.CodeModelLibrary)
+		ctx.CodeModelBuilder.Core = coreModel
+	}
+
+	if ctx.UnoptimizeCore {
+		buildProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
+	}
+	
+	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties)
+	
+	archiveFile, objectFiles, err := compileCore(ctx, coreBuildPath, coreBuildCachePath, buildProperties, coreModel)
 	if err != nil {
 		return i18n.WrapError(err)
 	}
@@ -75,12 +87,17 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 	return nil
 }
 
-func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *paths.Path, buildProperties *properties.Map) (*paths.Path, paths.PathList, error) {
+func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *paths.Path, buildProperties *properties.Map, coreModel *types.CodeModelLibrary) (*paths.Path, paths.PathList, error) {
 	logger := ctx.GetLogger()
 	coreFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_BUILD_CORE_PATH)
 	variantFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_BUILD_VARIANT_PATH)
 
 	targetCoreFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_RUNTIME_PLATFORM_PATH)
+	
+	if coreModel != nil {
+		coreModel.SourceDirectory = coreFolder
+		coreModel.Name = buildProperties[constants.LIBRARY_NAME]
+	}	
 
 	includes := []string{}
 	includes = append(includes, coreFolder.String())
@@ -93,7 +110,7 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 
 	variantObjectFiles := paths.NewPathList()
 	if variantFolder != nil && variantFolder.IsDir() {
-		variantObjectFiles, err = builder_utils.CompileFiles(ctx, variantFolder, true, buildPath, buildProperties, includes)
+		variantObjectFiles, err = builder_utils.CompileFiles(ctx, variantFolder, true, buildPath, buildProperties, includes, coreModel)
 		if err != nil {
 			return nil, nil, i18n.WrapError(err)
 		}
@@ -117,18 +134,18 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 		}
 	}
 
-	coreObjectFiles, err := builder_utils.CompileFiles(ctx, coreFolder, true, buildPath, buildProperties, includes)
+	coreObjectFiles, err := builder_utils.CompileFiles(ctx, coreFolder, true, buildPath, buildProperties, includes, coreModel)
 	if err != nil {
 		return nil, nil, i18n.WrapError(err)
 	}
 
-	archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, buildPath, paths.New("core.a"), coreObjectFiles, buildProperties)
+	archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, buildPath, paths.New("core.a"), coreObjectFiles, buildProperties, coreModel)
 	if err != nil {
 		return nil, nil, i18n.WrapError(err)
 	}
 
 	// archive core.a
-	if targetArchivedCore != nil {
+	if targetArchivedCore != nil && coreModel != nil {
 		err := archiveFile.CopyTo(targetArchivedCore)
 		if ctx.Verbose {
 			if err == nil {

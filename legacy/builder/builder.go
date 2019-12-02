@@ -30,6 +30,8 @@
 package builder
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"fmt"
 	"os"
 	"reflect"
@@ -114,7 +116,60 @@ func (s *Builder) Run(ctx *types.Context) error {
 	}
 
 	mainErr := runCommands(ctx, commands, true)
+	
+	if ctx.CodeModelBuilder != nil {
+		var librariesByLocation = map[string]*types.Library{}
 
+		for header, libraries := range ctx.HeaderToLibraries {
+			var knownHeader = new(types.KnownHeader)
+
+			knownHeader.Name = header
+			for _, library := range libraries {
+				knownHeader.LibraryDirectories = append(knownHeader.LibraryDirectories, library.SrcFolder)
+				librariesByLocation[library.Folder] = library
+			}
+
+			ctx.CodeModelBuilder.Prototypes = ctx.Prototypes
+			ctx.CodeModelBuilder.KnownHeaders = append(ctx.CodeModelBuilder.KnownHeaders, knownHeader)
+		}
+
+		for _, library := range librariesByLocation {
+			var knownLib = new(types.KnownLibrary)
+
+			knownLib.Folder = library.Folder
+			knownLib.SrcFolder = library.SrcFolder
+			knownLib.UtilityFolder = library.UtilityFolder
+			knownLib.Layout = library.Layout
+			knownLib.Name = library.Name
+			knownLib.RealName = library.RealName
+			knownLib.IsLegacy = library.IsLegacy
+			knownLib.Version = library.Version
+			knownLib.Author = library.Author
+			knownLib.Maintainer = library.Maintainer
+			knownLib.Sentence = library.Sentence
+			knownLib.Paragraph = library.Paragraph
+			knownLib.URL = library.URL
+			knownLib.Category = library.Category
+			knownLib.License = library.License
+
+			ctx.CodeModelBuilder.KnownLibraries = append(ctx.CodeModelBuilder.KnownLibraries, knownLib)
+		}
+
+		for key, value := range ctx.BuildProperties {
+			var kv = new(types.KeyValuePair)
+			kv.Key = key
+			kv.Value = value
+			ctx.CodeModelBuilder.BuildProperties = append(ctx.CodeModelBuilder.BuildProperties, *kv)
+		}
+
+		var bytes, err = json.MarshalIndent(ctx.CodeModelBuilder, "", "    ")
+		if err != nil {
+			return err
+		}
+		ioutil.WriteFile(ctx.CodeModelBuilderFile, bytes, 0644)
+		return nil
+	}
+	
 	commands = []types.Command{
 		&PrintUsedAndNotUsedLibraries{SketchError: mainErr != nil},
 

@@ -55,6 +55,10 @@ func (s *RecipeByPrefixSuffixRunner) Run(ctx *types.Context) error {
 
 	buildProperties := ctx.BuildProperties.Clone()
 	recipes := findRecipes(buildProperties, s.Prefix, s.Suffix)
+	
+	if ctx.CodeModelBuilder != nil {
+		return nil
+	}	
 
 	properties := buildProperties.Clone()
 	for _, recipe := range recipes {

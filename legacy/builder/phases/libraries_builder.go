@@ -58,7 +58,7 @@ func (s *LibrariesBuilder) Run(ctx *types.Context) error {
 		return i18n.WrapError(err)
 	}
 
-	objectFiles, err := compileLibraries(ctx, libs, librariesBuildPath, buildProperties, includes)
+	objectFiles, err := compileLibraries(ctx, libs, librariesBuildPath, buildProperties, includes, ctx.CodeModelBuilder, ctx.UnoptimizeLibraries)
 	if err != nil {
 		return i18n.WrapError(err)
 	}
@@ -98,10 +98,26 @@ func fixLDFLAGforPrecompiledLibraries(ctx *types.Context, libs libraries.List) e
 	return nil
 }
 
-func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *paths.Path, buildProperties *properties.Map, includes []string) (paths.PathList, error) {
+func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *paths.Path, buildProperties *properties.Map, includes []string, codeModel *types.CodeModelBuilder, unoptimize bool) (paths.PathList, error) {
+	var unoptimizedProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
 	objectFiles := paths.NewPathList()
 	for _, library := range libraries {
-		libraryObjectFiles, err := compileLibrary(ctx, library, buildPath, buildProperties, includes)
+		var libraryModel *types.CodeModelLibrary
+		if codeModel != nil {
+			libraryModel = new(types.CodeModelLibrary)
+			libraryModel.Name = library.Name
+			libraryModel.SourceDirectory = library.SrcFolder
+			codeModel.Libraries = append(codeModel.Libraries, libraryModel)
+		}
+
+		var effectiveProperties = buildProperties
+		if unoptimize && library.Properties["supports_unoptimized_builds"] != "false" {
+			effectiveProperties = unoptimizedProperties
+		}
+		
+		effectiveProperties = builder_utils.ExpandSysprogsExtensionProperties(effectiveProperties)	
+	
+		libraryObjectFiles, err := compileLibrary(ctx, library, buildPath, effectiveProperties, includes, libraryModel)
 		if err != nil {
 			return nil, i18n.WrapError(err)
 		}
@@ -111,7 +127,7 @@ func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *p
 	return objectFiles, nil
 }
 
-func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *paths.Path, buildProperties *properties.Map, includes []string) (paths.PathList, error) {
+func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *paths.Path, buildProperties *properties.Map, includes []string, libraryModel *types.CodeModelLibrary) (paths.PathList, error) {
 	logger := ctx.GetLogger()
 	if ctx.Verbose {
 		logger.Println(constants.LOG_LEVEL_INFO, "Compiling library \"{0}\"", library.Name)
@@ -142,12 +158,12 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 	}
 
 	if library.Layout == libraries.RecursiveLayout {
-		libObjectFiles, err := builder_utils.CompileFilesRecursive(ctx, library.SourceDir, libraryBuildPath, buildProperties, includes)
+		libObjectFiles, err := builder_utils.CompileFilesRecursive(ctx, library.SourceDir, libraryBuildPath, buildProperties, includes, libraryModel)
 		if err != nil {
 			return nil, i18n.WrapError(err)
 		}
 		if library.DotALinkage {
-			archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, libraryBuildPath, paths.New(library.Name+".a"), libObjectFiles, buildProperties)
+			archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, libraryBuildPath, paths.New(library.Name+".a"), libObjectFiles, buildProperties, libraryModel)
 			if err != nil {
 				return nil, i18n.WrapError(err)
 			}
@@ -159,7 +175,7 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 		if library.UtilityDir != nil {
 			includes = append(includes, utils.WrapWithHyphenI(library.UtilityDir.String()))
 		}
-		libObjectFiles, err := builder_utils.CompileFiles(ctx, library.SourceDir, false, libraryBuildPath, buildProperties, includes)
+		libObjectFiles, err := builder_utils.CompileFiles(ctx, library.SourceDir, false, libraryBuildPath, buildProperties, includes, libraryModel)
 		if err != nil {
 			return nil, i18n.WrapError(err)
 		}
@@ -167,7 +183,7 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 
 		if library.UtilityDir != nil {
 			utilityBuildPath := libraryBuildPath.Join("utility")
-			utilityObjectFiles, err := builder_utils.CompileFiles(ctx, library.UtilityDir, false, utilityBuildPath, buildProperties, includes)
+			utilityObjectFiles, err := builder_utils.CompileFiles(ctx, library.UtilityDir, false, utilityBuildPath, buildProperties, includes, libraryModel)
 			if err != nil {
 				return nil, i18n.WrapError(err)
 			}
