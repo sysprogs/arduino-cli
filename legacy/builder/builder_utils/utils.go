@@ -119,6 +119,7 @@ func RemoveOptimizationFromBuildProperties(properties *properties.Map) *properti
 
 	result.Set("compiler.c.flags", ReplaceOptimizationFlags(result.Get("compiler.c.flags")))
 	result.Set("compiler.cpp.flags", ReplaceOptimizationFlags(result.Get("compiler.cpp.flags")))
+	result.Set("build.flags.optimize", ReplaceOptimizationFlags(result.Get("build.flags.optimize")))
 	return result
 }
 
