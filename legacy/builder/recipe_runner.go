@@ -43,7 +43,9 @@ func (s *RecipeByPrefixSuffixRunner) Run(ctx *types.Context) error {
 	recipes := findRecipes(buildProperties, s.Prefix, s.Suffix)
 	
 	if ctx.CodeModelBuilder != nil {
-		return nil
+		if s.Prefix != constants.HOOKS_PREBUILD {
+			return nil
+		}
 	}	
 
 	properties := buildProperties.Clone()
