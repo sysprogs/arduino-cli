@@ -1,36 +1,21 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package builder
 
 import (
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -38,12 +23,11 @@ import (
 	"strings"
 
 	bldr "github.com/arduino/arduino-cli/arduino/builder"
-	"github.com/arduino/arduino-cli/arduino/sketch"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	properties "github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 )
 
 // ArduinoPreprocessorProperties are the platform properties needed to run arduino-preprocessor
@@ -65,7 +49,7 @@ func (s *PreprocessSketchArduino) Run(ctx *types.Context) error {
 	}
 
 	if err := ctx.PreprocPath.MkdirAll(); err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	GCCPreprocRunner(ctx, sourceFile, ctx.PreprocPath.Join(constants.FILE_CTAGS_TARGET_FOR_GCC_MINUS_E), ctx.IncludeFolders)
@@ -74,7 +58,7 @@ func (s *PreprocessSketchArduino) Run(ctx *types.Context) error {
 		PrintRingNameIfDebug(ctx, command)
 		err := command.Run(ctx)
 		if err != nil {
-			return i18n.WrapError(err)
+			return errors.WithStack(err)
 		}
 	}
 
@@ -82,7 +66,7 @@ func (s *PreprocessSketchArduino) Run(ctx *types.Context) error {
 	if ctx.CodeCompleteAt != "" {
 		err = new(OutputCodeCompletions).Run(ctx)
 	} else {
-		err = bldr.SketchSaveItemCpp(&sketch.Item{ctx.Sketch.MainFile.Name.String(), []byte(ctx.Source)}, ctx.SketchBuildPath.String())
+		err = bldr.SketchSaveItemCpp(ctx.Sketch.MainFile.Name.String(), []byte(ctx.Source), ctx.SketchBuildPath.String())
 	}
 
 	return err
@@ -93,12 +77,11 @@ type ArduinoPreprocessorRunner struct{}
 func (s *ArduinoPreprocessorRunner) Run(ctx *types.Context) error {
 	buildProperties := ctx.BuildProperties
 	targetFilePath := ctx.PreprocPath.Join(constants.FILE_CTAGS_TARGET_FOR_GCC_MINUS_E)
-	logger := ctx.GetLogger()
 
-	properties := buildProperties.Clone()
+	preprocProperties := buildProperties.Clone()
 	toolProps := buildProperties.SubTree("tools").SubTree("arduino-preprocessor")
-	properties.Merge(toolProps)
-	properties.SetPath(constants.BUILD_PROPERTIES_SOURCE_FILE, targetFilePath)
+	preprocProperties.Merge(toolProps)
+	preprocProperties.SetPath(constants.BUILD_PROPERTIES_SOURCE_FILE, targetFilePath)
 	if ctx.CodeCompleteAt != "" {
 		if runtime.GOOS == "windows" {
 			//use relative filepath to avoid ":" escaping
@@ -110,21 +93,22 @@ func (s *ArduinoPreprocessorRunner) Run(ctx *types.Context) error {
 				ctx.CodeCompleteAt = strings.Join(splt[1:], ":")
 			}
 		}
-		properties.Set("codecomplete", "-output-code-completions="+ctx.CodeCompleteAt)
+		preprocProperties.Set("codecomplete", "-output-code-completions="+ctx.CodeCompleteAt)
 	} else {
-		properties.Set("codecomplete", "")
+		preprocProperties.Set("codecomplete", "")
 	}
 
-	pattern := properties.Get(constants.BUILD_PROPERTIES_PATTERN)
+	pattern := preprocProperties.Get(constants.BUILD_PROPERTIES_PATTERN)
 	if pattern == constants.EMPTY_STRING {
-		return i18n.ErrorfWithLogger(logger, constants.MSG_PATTERN_MISSING, "arduino-preprocessor")
+		return errors.New("arduino-preprocessor pattern is missing")
 	}
 
-	commandLine := properties.ExpandPropsInString(pattern)
-	command, err := utils.PrepareCommand(commandLine, logger, "")
+	commandLine := preprocProperties.ExpandPropsInString(pattern)
+	parts, err := properties.SplitQuotedString(commandLine, `"'`, false)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
+	command := exec.Command(parts[0], parts[1:]...)
 
 	if runtime.GOOS == "windows" {
 		// chdir in the uppermost directory to avoid UTF-8 bug in clang (https://github.com/arduino/arduino-preprocessor/issues/2)
@@ -139,7 +123,7 @@ func (s *ArduinoPreprocessorRunner) Run(ctx *types.Context) error {
 
 	buf, err := command.Output()
 	if err != nil {
-		return errors.New(i18n.WrapError(err).Error() + string(err.(*exec.ExitError).Stderr))
+		return errors.New(errors.WithStack(err).Error() + string(err.(*exec.ExitError).Stderr))
 	}
 
 	result := utils.NormalizeUTF8(buf)

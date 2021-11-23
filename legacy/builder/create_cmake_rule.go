@@ -1,38 +1,26 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package builder
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	properties "github.com/arduino/go-properties-orderedmap"
@@ -44,7 +32,7 @@ import (
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 )
 
-var VALID_EXPORT_EXTENSIONS = map[string]bool{".h": true, ".c": true, ".hpp": true, ".hh": true, ".cpp": true, ".s": true, ".a": true, ".properties": true}
+var VALID_EXPORT_EXTENSIONS = map[string]bool{".h": true, ".c": true, ".hpp": true, ".hh": true, ".cpp": true, ".S": true, ".a": true, ".properties": true}
 var DOTHEXTENSION = map[string]bool{".h": true, ".hh": true, ".hpp": true}
 var DOTAEXTENSION = map[string]bool{".a": true}
 
@@ -116,11 +104,11 @@ func (s *ExportProjectCMake) Run(ctx *types.Context) error {
 	}
 
 	// Copy core + variant in use + preprocessed sketch in the correct folders
-	err := utils.CopyDir(ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_BUILD_CORE_PATH), coreFolder.String(), extensions)
+	err := utils.CopyDir(ctx.BuildProperties.Get("build.core.path"), coreFolder.String(), extensions)
 	if err != nil {
 		fmt.Println(err)
 	}
-	err = utils.CopyDir(ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_BUILD_VARIANT_PATH), coreFolder.Join("variant").String(), extensions)
+	err = utils.CopyDir(ctx.BuildProperties.Get("build.variant.path"), coreFolder.Join("variant").String(), extensions)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -129,7 +117,7 @@ func (s *ExportProjectCMake) Run(ctx *types.Context) error {
 	commands := []types.Command{
 		//&ContainerMergeCopySketchFiles{},
 		&ContainerAddPrototypes{},
-		//&FilterSketchSource{Source: &ctx.Source, RemoveLineMarkers: true},
+		&FilterSketchSource{Source: &ctx.Source, RemoveLineMarkers: true},
 	}
 
 	for _, command := range commands {
@@ -139,6 +127,31 @@ func (s *ExportProjectCMake) Run(ctx *types.Context) error {
 	err = utils.CopyDir(ctx.SketchBuildPath.String(), cmakeFolder.Join("sketch").String(), extensions)
 	if err != nil {
 		fmt.Println(err)
+	}
+
+	// remove "#line 1 ..." from exported c_make folder sketch
+	var sketchFiles []string
+	utils.FindFilesInFolder(&sketchFiles, cmakeFolder.Join("sketch").String(), extensions, false)
+
+	for _, file := range sketchFiles {
+		input, err := ioutil.ReadFile(file)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		lines := strings.Split(string(input), "\n")
+
+		for i, line := range lines {
+			if lineToRemove, _ := regexp.MatchString(`^#line\s\d+\s"`, line); lineToRemove == true {
+				lines[i] = ""
+			}
+		}
+		output := strings.Join(lines, "\n")
+		err = ioutil.WriteFile(file, []byte(output), 0644)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	// Extract CFLAGS, CPPFLAGS and LDFLAGS
@@ -227,8 +240,8 @@ func canExportCmakeProject(ctx *types.Context) bool {
 	return ctx.BuildProperties.Get("compiler.export_cmake") != ""
 }
 
-func extractCompileFlags(ctx *types.Context, receipe string, defines, dynamicLibs, linkerflags, linkDirectories *[]string, logger i18n.Logger) {
-	command, _ := builder_utils.PrepareCommandForRecipe(ctx, ctx.BuildProperties, receipe, true)
+func extractCompileFlags(ctx *types.Context, recipe string, defines, dynamicLibs, linkerflags, linkDirectories *[]string, logger i18n.Logger) {
+	command, _ := builder_utils.PrepareCommandForRecipe(ctx.BuildProperties, recipe, true)
 
 	for _, arg := range command.Args {
 		if strings.HasPrefix(arg, "-D") {

@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package librariesindex
 
@@ -22,6 +20,7 @@ import (
 
 	"github.com/arduino/arduino-cli/arduino/libraries"
 	"github.com/arduino/arduino-cli/arduino/resources"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	semver "go.bug.st/relaxed-semver"
 )
 
@@ -43,19 +42,36 @@ type Library struct {
 
 // Release is a release of a library available for download
 type Release struct {
-	Author        string
-	Version       *semver.Version
-	Dependencies  []semver.Dependency
-	Maintainer    string
-	Sentence      string
-	Paragraph     string
-	Website       string
-	Category      string
-	Architectures []string
-	Types         []string
-	Resource      *resources.DownloadResource
+	Author           string
+	Version          *semver.Version
+	Dependencies     []semver.Dependency
+	Maintainer       string
+	Sentence         string
+	Paragraph        string
+	Website          string
+	Category         string
+	Architectures    []string
+	Types            []string
+	Resource         *resources.DownloadResource
+	License          string
+	ProvidesIncludes []string
 
 	Library *Library `json:"-"`
+}
+
+// ToRPCLibraryRelease transform this Release into a rpc.LibraryRelease
+func (r *Release) ToRPCLibraryRelease() *rpc.LibraryRelease {
+	return &rpc.LibraryRelease{
+		Author:        r.Author,
+		Version:       r.Version.String(),
+		Maintainer:    r.Maintainer,
+		Sentence:      r.Sentence,
+		Paragraph:     r.Paragraph,
+		Website:       r.Website,
+		Category:      r.Category,
+		Architectures: r.Architectures,
+		Types:         r.Types,
+	}
 }
 
 // GetName returns the name of this library.
@@ -120,7 +136,9 @@ func (idx *Index) FindLibraryUpdate(lib *libraries.Library) *Release {
 	if indexLib == nil {
 		return nil
 	}
-	if indexLib.Latest.Version.GreaterThan(lib.Version) {
+	// If a library.properties has an invalid version property, usually empty or malformed,
+	// the latest available version is returned
+	if lib.Version == nil || indexLib.Latest.Version.GreaterThan(lib.Version) {
 		return indexLib.Latest
 	}
 	return nil

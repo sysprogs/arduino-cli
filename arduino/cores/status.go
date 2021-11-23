@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package cores
 
@@ -32,14 +30,21 @@ func NewPackages() Packages {
 	return map[string]*Package{}
 }
 
+// PackageHelp contains info on how to reach maintainers for help
+type PackageHelp struct {
+	Online string `json:"online,omitempty"`
+}
+
 // Package represents a package in the system.
 type Package struct {
 	Name       string               // Name of the package.
 	Maintainer string               // Name of the maintainer.
 	WebsiteURL string               // Website of maintainer.
+	URL        string               // origin URL for package index json file.
 	Email      string               // Email of maintainer.
 	Platforms  map[string]*Platform // The platforms in the system.
 	Tools      map[string]*Tool     // The tools in the system.
+	Help       PackageHelp          `json:"-"`
 	Packages   Packages             `json:"-"`
 }
 
@@ -97,16 +102,16 @@ func (packages Packages) GetDepsOfPlatformRelease(release *PlatformRelease) ([]*
 
 // GetOrCreatePlatform returns the Platform object with the specified architecture
 // or creates a new one if not found
-func (targetPackage *Package) GetOrCreatePlatform(architecure string) *Platform {
-	if platform, ok := targetPackage.Platforms[architecure]; ok {
+func (targetPackage *Package) GetOrCreatePlatform(architecture string) *Platform {
+	if platform, ok := targetPackage.Platforms[architecture]; ok {
 		return platform
 	}
 	targetPlatform := &Platform{
-		Architecture: architecure,
+		Architecture: architecture,
 		Releases:     map[string]*PlatformRelease{},
 		Package:      targetPackage,
 	}
-	targetPackage.Platforms[architecure] = targetPlatform
+	targetPackage.Platforms[architecture] = targetPlatform
 	return targetPlatform
 }
 

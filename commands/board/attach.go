@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package board
 
@@ -29,14 +27,13 @@ import (
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
 	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/arduino-cli/commands"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	discovery "github.com/arduino/board-discovery"
-	paths "github.com/arduino/go-paths-helper"
+	"github.com/arduino/go-paths-helper"
 )
 
 // Attach FIXMEDOC
-func Attach(ctx context.Context, req *rpc.BoardAttachReq, taskCB commands.TaskProgressCB) (*rpc.BoardAttachResp, error) {
-
+func Attach(ctx context.Context, req *rpc.BoardAttachRequest, taskCB commands.TaskProgressCB) (*rpc.BoardAttachResponse, error) {
 	pm := commands.GetPackageManager(req.GetInstance().GetId())
 	if pm == nil {
 		return nil, errors.New("invalid instance")
@@ -98,6 +95,7 @@ func Attach(ctx context.Context, req *rpc.BoardAttachReq, taskCB commands.TaskPr
 		sketch.Metadata.CPU = sketches.BoardMetadata{
 			Fqbn: board.FQBN(),
 			Name: board.Name(),
+			Port: deviceURI.String(),
 		}
 	}
 
@@ -106,7 +104,7 @@ func Attach(ctx context.Context, req *rpc.BoardAttachReq, taskCB commands.TaskPr
 		return nil, fmt.Errorf("cannot export sketch metadata: %s", err)
 	}
 	taskCB(&rpc.TaskProgress{Name: "Selected fqbn: " + sketch.Metadata.CPU.Fqbn, Completed: true})
-	return &rpc.BoardAttachResp{}, nil
+	return &rpc.BoardAttachResponse{}, nil
 }
 
 // FIXME: Those should probably go in a "BoardManager" pkg or something
@@ -114,7 +112,10 @@ func Attach(ctx context.Context, req *rpc.BoardAttachReq, taskCB commands.TaskPr
 // for the matching.
 func findSerialConnectedBoard(pm *packagemanager.PackageManager, monitor *discovery.Monitor, deviceURI *url.URL) *cores.Board {
 	found := false
-	location := deviceURI.Path
+	// to support both cases:
+	// serial:///dev/ttyACM2 parsing gives: deviceURI.Host = ""      and deviceURI.Path = /dev/ttyACM2
+	// serial://COM3 parsing gives:         deviceURI.Host = "COM3"  and deviceURI.Path = ""
+	location := deviceURI.Host + deviceURI.Path
 	var serialDevice discovery.SerialDevice
 	for _, device := range monitor.Serial() {
 		if device.Port == location {

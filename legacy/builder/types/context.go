@@ -1,23 +1,63 @@
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
+
 package types
 
 import (
 	"io"
 	"strings"
 
+	"github.com/arduino/arduino-cli/arduino/builder"
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
 	"github.com/arduino/arduino-cli/arduino/libraries"
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesmanager"
 	"github.com/arduino/arduino-cli/arduino/libraries/librariesresolver"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 )
 
 type ProgressStruct struct {
 	PrintEnabled bool
-	Steps        float64
-	Progress     float64
+	Progress     float32
+	StepAmount   float32
+	Parent       *ProgressStruct
+}
+
+func (p *ProgressStruct) AddSubSteps(steps int) {
+	p.Parent = &ProgressStruct{
+		Progress:   p.Progress,
+		StepAmount: p.StepAmount,
+		Parent:     p.Parent,
+	}
+	if p.StepAmount == 0.0 {
+		p.StepAmount = 100.0
+	}
+	p.StepAmount /= float32(steps)
+}
+
+func (p *ProgressStruct) RemoveSubSteps() {
+	p.Progress = p.Parent.Progress
+	p.StepAmount = p.Parent.StepAmount
+	p.Parent = p.Parent.Parent
+}
+
+func (p *ProgressStruct) CompleteStep() {
+	p.Progress += p.StepAmount
 }
 
 // Context structure
@@ -27,11 +67,13 @@ type Context struct {
 	BuiltInToolsDirs     paths.PathList
 	BuiltInLibrariesDirs paths.PathList
 	OtherLibrariesDirs   paths.PathList
+	LibraryDirs          paths.PathList // List of paths pointing to individual library root folders
 	SketchLocation       *paths.Path
 	WatchedLocations     paths.PathList
 	ArduinoAPIVersion    string
 	FQBN                 *cores.FQBN
 	CodeCompleteAt       string
+	Clean                bool
 
 	// Build options are serialized here
 	BuildOptionsJson         string
@@ -50,19 +92,20 @@ type Context struct {
 	PlatformKeyRewrites    PlatforKeysRewrite
 	HardwareRewriteResults map[*cores.PlatformRelease][]PlatforKeyRewrite
 
-	BuildProperties      *properties.Map
-	BuildCore            string
-	BuildPath            *paths.Path
-	BuildCachePath       *paths.Path
-	SketchBuildPath      *paths.Path
-	CoreBuildPath        *paths.Path
-	CoreBuildCachePath   *paths.Path
-	CoreArchiveFilePath  *paths.Path
-	CoreObjectsFiles     paths.PathList
-	LibrariesBuildPath   *paths.Path
-	LibrariesObjectFiles paths.PathList
-	PreprocPath          *paths.Path
-	SketchObjectFiles    paths.PathList
+	BuildProperties              *properties.Map
+	BuildCore                    string
+	BuildPath                    *paths.Path
+	BuildCachePath               *paths.Path
+	SketchBuildPath              *paths.Path
+	CoreBuildPath                *paths.Path
+	CoreBuildCachePath           *paths.Path
+	CoreArchiveFilePath          *paths.Path
+	CoreObjectsFiles             paths.PathList
+	LibrariesBuildPath           *paths.Path
+	LibrariesObjectFiles         paths.PathList
+	PreprocPath                  *paths.Path
+	SketchObjectFiles            paths.PathList
+	IgnoreSketchFolderNameErrors bool
 
 	CollectedSourceFiles *UniqueSourceFileQueue
 
@@ -100,6 +143,10 @@ type Context struct {
 	Verbose           bool
 	DebugPreprocessor bool
 
+	// Compile optimization settings
+	OptimizeForDebug  bool
+	OptimizationFlags string
+
 	// Dry run, only create progress map
 	Progress ProgressStruct
 
@@ -122,6 +169,42 @@ type Context struct {
 	// Out and Err stream to redirect all Exec commands
 	ExecStdout io.Writer
 	ExecStderr io.Writer
+
+	// Sizer results
+	ExecutableSectionsSize ExecutablesFileSections
+
+	// Compilation Database to build/update
+	CompilationDatabase *builder.CompilationDatabase
+	// Set to true to skip build and produce only Compilation Database
+	OnlyUpdateCompilationDatabase bool
+
+	// Source code overrides (filename -> content map).
+	// The provided source data is used instead of reading it from disk.
+	// The keys of the map are paths relative to sketch folder.
+	SourceOverride map[string]string
+}
+
+// ExecutableSectionSize represents a section of the executable output file
+type ExecutableSectionSize struct {
+	Name    string
+	Size    int
+	MaxSize int
+}
+
+// ExecutablesFileSections is an array of ExecutablesFileSection
+type ExecutablesFileSections []ExecutableSectionSize
+
+// ToRPCExecutableSectionSizeArray transforms this array into a []*rpc.ExecutableSectionSize
+func (s ExecutablesFileSections) ToRPCExecutableSectionSizeArray() []*rpc.ExecutableSectionSize {
+	res := []*rpc.ExecutableSectionSize{}
+	for _, section := range s {
+		res = append(res, &rpc.ExecutableSectionSize{
+			Name:    section.Name,
+			Size:    int64(section.Size),
+			MaxSize: int64(section.MaxSize),
+		})
+	}
+	return res
 }
 
 func (ctx *Context) ExtractBuildOptions() *properties.Map {
@@ -146,6 +229,7 @@ func (ctx *Context) ExtractBuildOptions() *properties.Map {
 	opts.Set("runtime.ide.version", ctx.ArduinoAPIVersion)
 	opts.Set("customBuildProperties", strings.Join(ctx.CustomBuildProperties, ","))
 	opts.Set("additionalFiles", strings.Join(additionalFilesRelative, ","))
+	opts.Set("compiler.optimization_flags", ctx.OptimizationFlags)
 	return opts
 }
 
@@ -162,6 +246,7 @@ func (ctx *Context) InjectBuildOptions(opts *properties.Map) {
 	ctx.FQBN = fqbn
 	ctx.ArduinoAPIVersion = opts.Get("runtime.ide.version")
 	ctx.CustomBuildProperties = strings.Split(opts.Get("customBuildProperties"), ",")
+	ctx.OptimizationFlags = opts.Get("compiler.optimization_flags")
 }
 
 func (ctx *Context) GetLogger() i18n.Logger {

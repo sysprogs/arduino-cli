@@ -1,5 +1,5 @@
 /debug
-/arduino-cli
+/arduino-cli*
 /main
 /.vscode/
 /cmd/formatter/debug.test
@@ -15,8 +15,15 @@ venv
 
 # gRPC client example folder
 /client_example/client_example
-*.bin
-*.elf
+/client_example/**/*.bin
+/client_example/**/*.elf
 
 # Misc.
 .DS_Store
+
+# Mkdocs
+/site/
+/public/
+/docsgen/arduino-cli
+/docs/rpc/*.md
+/docs/commands/*.md

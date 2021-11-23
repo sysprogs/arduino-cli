@@ -4,6 +4,16 @@
 # See https://github.com/Masterminds/glide/blob/master/LICENSE for more details
 # and copyright notice.
 
+#
+# Usage:
+#
+# To install the latest version of the CLI:
+#    ./install.sh
+#
+# To pin a specific release of the CLI:
+#    ./install.sh 0.9.0
+#
+
 PROJECT_NAME="arduino-cli"
 
 # BINDIR represents the local bin location, defaults to ./bin.
@@ -74,9 +84,9 @@ checkLatestVersion() {
 	local regex="[0-9][A-Za-z0-9\.-]*"
 	local latest_url="https://github.com/arduino/arduino-cli/releases/latest"
 	if [ "$DOWNLOAD_TOOL" = "curl" ]; then
-		tag=$(curl -SsL $latest_url | grep -o "Release $regex · arduino/arduino-cli" | grep -o "$regex")
+		tag=$(curl -SsL $latest_url | grep -o "<title>Release $regex · arduino/arduino-cli" | grep -o "$regex")
 	elif [ "$DOWNLOAD_TOOL" = "wget" ]; then
-		tag=$(wget -q -O - $latest_url | grep -o "Release $regex · arduino/arduino-cli" | grep -o "$regex")
+		tag=$(wget -q -O - $latest_url | grep -o "<title>Release $regex · arduino/arduino-cli" | grep -o "$regex")
 	fi
 	if [ "x$tag" = "x" ]; then
 		echo "Cannot determine latest tag."
@@ -119,7 +129,11 @@ getFile() {
 }
 
 downloadFile() {
-	checkLatestVersion TAG
+	if [ -z $1 ]; then
+		checkLatestVersion TAG
+	else
+		TAG=$1
+	fi
 	echo "TAG=$TAG"
 	#  arduino-cli_0.4.0-rc1_Linux_64bit.[tar.gz, zip]
 	if [ "$OS" = "Windows" ]; then
@@ -177,8 +191,13 @@ testVersion() {
 	CLI="$(which $PROJECT_NAME)"
 	if [ "$?" = "1" ]; then
 		echo "$PROJECT_NAME not found. You might want to add "$LBINDIR" to your "'$PATH'
-	elif [ $CLI != "$LBINDIR/$PROJECT_NAME" ]; then
-		fail "An existing $PROJECT_NAME was found at $CLI. Please prepend "$LBINDIR" to your "'$PATH'" or remove the existing one."
+	else
+		# Convert to resolved, absolute paths before comparison
+		CLI_REALPATH="$(cd -- "$(dirname -- "$CLI")" && pwd -P)"
+		LBINDIR_REALPATH="$(cd -- "$LBINDIR" && pwd -P)"
+		if [ "$CLI_REALPATH" != "$LBINDIR_REALPATH" ]; then
+			echo "An existing $PROJECT_NAME was found at $CLI. Please prepend "$LBINDIR" to your "'$PATH'" or remove the existing one."
+		fi
 	fi
 
 	set -e
@@ -196,6 +215,6 @@ set -e
 initArch
 initOS
 initDownloadTool
-downloadFile
+downloadFile $1
 installFile
 testVersion

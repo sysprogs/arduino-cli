@@ -1,74 +1,27 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package test
 
 import (
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
-	"github.com/arduino/arduino-cli/legacy/builder/utils"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/arduino/arduino-cli/legacy/builder/utils"
+	"github.com/stretchr/testify/require"
 )
-
-func TestCommandLineParser(t *testing.T) {
-	command := "\"/home/federico/materiale/works_Arduino/Arduino/build/hardware/tools/coan\" source -m -E -P -kb -c -g -Os -w -ffunction-sections -fdata-sections -MMD -mmcu=atmega32u4 -DF_CPU=16000000L -DARDUINO=010600 -DARDUINO_AVR_LEONARDO -DARDUINO_ARCH_AVR  -DUSB_VID=0x2341 -DUSB_PID=0x8036 '-DUSB_MANUFACTURER=' '-DUSB_PRODUCT=\"Arduino Leonardo\"' \"/tmp/sketch321469072.cpp\""
-
-	parts, err := utils.ParseCommandLine(command, i18n.HumanLogger{})
-	NoError(t, err)
-
-	require.Equal(t, 23, len(parts))
-
-	require.Equal(t, "/home/federico/materiale/works_Arduino/Arduino/build/hardware/tools/coan", parts[0])
-	require.Equal(t, "source", parts[1])
-	require.Equal(t, "-m", parts[2])
-	require.Equal(t, "-E", parts[3])
-	require.Equal(t, "-P", parts[4])
-	require.Equal(t, "-kb", parts[5])
-	require.Equal(t, "-c", parts[6])
-	require.Equal(t, "-g", parts[7])
-	require.Equal(t, "-Os", parts[8])
-	require.Equal(t, "-w", parts[9])
-	require.Equal(t, "-ffunction-sections", parts[10])
-	require.Equal(t, "-fdata-sections", parts[11])
-	require.Equal(t, "-MMD", parts[12])
-	require.Equal(t, "-mmcu=atmega32u4", parts[13])
-	require.Equal(t, "-DF_CPU=16000000L", parts[14])
-	require.Equal(t, "-DARDUINO=010600", parts[15])
-	require.Equal(t, "-DARDUINO_AVR_LEONARDO", parts[16])
-	require.Equal(t, "-DARDUINO_ARCH_AVR", parts[17])
-	require.Equal(t, "-DUSB_VID=0x2341", parts[18])
-	require.Equal(t, "-DUSB_PID=0x8036", parts[19])
-	require.Equal(t, "-DUSB_MANUFACTURER=", parts[20])
-	require.Equal(t, "-DUSB_PRODUCT=\"Arduino Leonardo\"", parts[21])
-	require.Equal(t, "/tmp/sketch321469072.cpp", parts[22])
-}
 
 func TestPrintableCommand(t *testing.T) {
 	parts := []string{
@@ -87,13 +40,6 @@ func TestPrintableCommand(t *testing.T) {
 		" lastarg"
 	result := utils.PrintableCommand(parts)
 	require.Equal(t, correct, result)
-}
-
-func TestCommandLineParserError(t *testing.T) {
-	command := "\"command missing quote"
-
-	_, err := utils.ParseCommandLine(command, i18n.HumanLogger{})
-	require.Error(t, err)
 }
 
 func TestMapTrimSpace(t *testing.T) {

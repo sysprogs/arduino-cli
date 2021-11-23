@@ -1,31 +1,17 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package utils
 
@@ -39,82 +25,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/arduino/arduino-cli/legacy/builder/constants"
 	"github.com/arduino/arduino-cli/legacy/builder/gohasissues"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	paths "github.com/arduino/go-paths-helper"
+	"github.com/pkg/errors"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 )
-
-func PrettyOSName() string {
-	switch osName := runtime.GOOS; osName {
-	case "darwin":
-		return "macosx"
-	case "freebsd":
-		return "freebsd"
-	case "linux":
-		return "linux"
-	case "windows":
-		return "windows"
-	default:
-		return "other"
-	}
-}
-
-func ParseCommandLine(input string, logger i18n.Logger) ([]string, error) {
-	var parts []string
-	escapingChar := constants.EMPTY_STRING
-	escapedArg := constants.EMPTY_STRING
-	for _, inputPart := range strings.Split(input, constants.SPACE) {
-		inputPart = strings.TrimSpace(inputPart)
-		if len(inputPart) == 0 {
-			continue
-		}
-
-		if escapingChar == constants.EMPTY_STRING {
-			if inputPart[0] != '"' && inputPart[0] != '\'' {
-				parts = append(parts, inputPart)
-				continue
-			}
-
-			escapingChar = string(inputPart[0])
-			inputPart = inputPart[1:]
-			escapedArg = constants.EMPTY_STRING
-		}
-
-		if inputPart[len(inputPart)-1] != '"' && inputPart[len(inputPart)-1] != '\'' {
-			escapedArg = escapedArg + inputPart + " "
-			continue
-		}
-
-		escapedArg = escapedArg + inputPart[:len(inputPart)-1]
-		escapedArg = strings.TrimSpace(escapedArg)
-		if len(escapedArg) > 0 {
-			parts = append(parts, escapedArg)
-		}
-		escapingChar = constants.EMPTY_STRING
-	}
-
-	if escapingChar != constants.EMPTY_STRING {
-		return nil, i18n.ErrorfWithLogger(logger, constants.MSG_INVALID_QUOTING, escapingChar)
-	}
-
-	return parts, nil
-}
 
 type filterFiles func([]os.FileInfo) []os.FileInfo
 
 func ReadDirFiltered(folder string, fn filterFiles) ([]os.FileInfo, error) {
 	files, err := gohasissues.ReadDir(folder)
 	if err != nil {
-		return nil, i18n.WrapError(err)
+		return nil, errors.WithStack(err)
 	}
 	return fn(files), nil
 }
@@ -218,50 +146,6 @@ func TrimSpace(value string) string {
 	return strings.TrimSpace(value)
 }
 
-type argFilterFunc func(int, string, []string) bool
-
-func PrepareCommandFilteredArgs(pattern string, filter argFilterFunc, logger i18n.Logger, relativePath string) (*exec.Cmd, error) {
-	parts, err := ParseCommandLine(pattern, logger)
-	if err != nil {
-		return nil, i18n.WrapError(err)
-	}
-	command := parts[0]
-	parts = parts[1:]
-	var args []string
-	for idx, part := range parts {
-		if filter(idx, part, parts) {
-			// if relativePath is specified, the overall commandline is too long for the platform
-			// try reducing the length by making the filenames relative
-			// and changing working directory to build.path
-			if relativePath != "" {
-				if _, err := os.Stat(part); !os.IsNotExist(err) {
-					tmp, err := filepath.Rel(relativePath, part)
-					if err == nil {
-						part = tmp
-					}
-				}
-			}
-			args = append(args, part)
-		}
-	}
-
-	cmd := exec.Command(command, args...)
-
-	if relativePath != "" {
-		cmd.Dir = relativePath
-	}
-
-	return cmd, nil
-}
-
-func filterEmptyArg(_ int, arg string, _ []string) bool {
-	return arg != constants.EMPTY_STRING
-}
-
-func PrepareCommand(pattern string, logger i18n.Logger, relativePath string) (*exec.Cmd, error) {
-	return PrepareCommandFilteredArgs(pattern, filterEmptyArg, logger, relativePath)
-}
-
 func printableArgument(arg string) string {
 	if strings.ContainsAny(arg, "\"\\ \t") {
 		arg = strings.Replace(arg, "\\", "\\\\", -1)
@@ -315,7 +199,7 @@ func ExecCommand(ctx *types.Context, command *exec.Cmd, stdout int, stderr int) 
 
 	err := command.Start()
 	if err != nil {
-		return nil, nil, i18n.WrapError(err)
+		return nil, nil, errors.WithStack(err)
 	}
 
 	err = command.Wait()
@@ -328,7 +212,7 @@ func ExecCommand(ctx *types.Context, command *exec.Cmd, stdout int, stderr int) 
 		errbytes = buf.Bytes()
 	}
 
-	return outbytes, errbytes, i18n.WrapError(err)
+	return outbytes, errbytes, errors.WithStack(err)
 }
 
 func AbsolutizePaths(files []string) ([]string, error) {
@@ -338,7 +222,7 @@ func AbsolutizePaths(files []string) ([]string, error) {
 		}
 		absFile, err := filepath.Abs(file)
 		if err != nil {
-			return nil, i18n.WrapError(err)
+			return nil, errors.WithStack(err)
 		}
 		files[idx] = absFile
 	}
@@ -463,12 +347,12 @@ func QuoteCppPath(path *paths.Path) string {
 // is a string contained in double quotes, with any backslashes or
 // quotes escaped with a backslash. If a valid string was present at the
 // start of the given line, returns the unquoted string contents, the
-// remaineder of the line (everything after the closing "), and true.
+// remainder of the line (everything after the closing "), and true.
 // Otherwise, returns the empty string, the entire line and false.
 func ParseCppString(line string) (string, string, bool) {
 	// For details about how these strings are output by gcc, see:
 	// https://github.com/gcc-mirror/gcc/blob/a588355ab948cf551bc9d2b89f18e5ae5140f52c/libcpp/macro.c#L491-L511
-	// Note that the documentaiton suggests all non-printable
+	// Note that the documentation suggests all non-printable
 	// characters are also escaped, but the implementation does not
 	// actually do this. See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51259
 	if len(line) < 1 || line[0] != '"' {

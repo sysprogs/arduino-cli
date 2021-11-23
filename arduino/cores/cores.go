@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package cores
 
@@ -30,11 +28,18 @@ import (
 
 // Platform represents a platform package.
 type Platform struct {
-	Architecture string // The name of the architecture of this package.
-	Name         string
-	Category     string
-	Releases     map[string]*PlatformRelease // The Releases of this platform, labeled by version.
-	Package      *Package                    `json:"-"`
+	Architecture      string // The name of the architecture of this package.
+	Name              string
+	Category          string
+	Releases          map[string]*PlatformRelease // The Releases of this platform, labeled by version.
+	Package           *Package                    `json:"-"`
+	ManuallyInstalled bool                        // true if the Platform has been installed without the CLI
+	Deprecated        bool                        // true if the Platform has been deprecated
+}
+
+// PlatformReleaseHelp represents the help URL for this Platform release
+type PlatformReleaseHelp struct {
+	Online string `json:"-"`
 }
 
 // PlatformRelease represents a release of a plaform package.
@@ -42,13 +47,16 @@ type PlatformRelease struct {
 	Resource       *resources.DownloadResource
 	Version        *semver.Version
 	BoardsManifest []*BoardManifest
-	Dependencies   ToolDependencies           // The Dependency entries to load tools.
-	Platform       *Platform                  `json:"-"`
-	Properties     *properties.Map            `json:"-"`
-	Boards         map[string]*Board          `json:"-"`
-	Programmers    map[string]*properties.Map `json:"-"`
-	Menus          *properties.Map            `json:"-"`
-	InstallDir     *paths.Path                `json:"-"`
+	Dependencies   ToolDependencies       // The Dependency entries to load tools.
+	Help           PlatformReleaseHelp    `json:"-"`
+	Platform       *Platform              `json:"-"`
+	Properties     *properties.Map        `json:"-"`
+	Boards         map[string]*Board      `json:"-"`
+	Programmers    map[string]*Programmer `json:"-"`
+	Menus          *properties.Map        `json:"-"`
+	InstallDir     *paths.Path            `json:"-"`
+	IsIDEBundled   bool                   `json:"-"`
+	IsTrusted      bool                   `json:"-"`
 }
 
 // BoardManifest contains information about a board. These metadata are usually
@@ -106,23 +114,23 @@ func (dep *ToolDependency) String() string {
 
 // GetOrCreateRelease returns the specified release corresponding the provided version,
 // or creates a new one if not found.
-func (platform *Platform) GetOrCreateRelease(version *semver.Version) (*PlatformRelease, error) {
+func (platform *Platform) GetOrCreateRelease(version *semver.Version) *PlatformRelease {
 	tag := ""
 	if version != nil {
 		tag = version.String()
 	}
 	if release, ok := platform.Releases[tag]; ok {
-		return release, nil
+		return release
 	}
 	release := &PlatformRelease{
 		Version:     version,
 		Boards:      map[string]*Board{},
 		Properties:  properties.NewMap(),
-		Programmers: map[string]*properties.Map{},
+		Programmers: map[string]*Programmer{},
 		Platform:    platform,
 	}
 	platform.Releases[tag] = release
-	return release, nil
+	return release
 }
 
 // FindReleaseWithVersion returns the specified release corresponding the provided version,
@@ -218,7 +226,7 @@ func (release *PlatformRelease) RequiresToolRelease(toolRelease *ToolRelease) bo
 	for _, toolDep := range release.Dependencies {
 		if toolDep.ToolName == toolRelease.Tool.Name &&
 			toolDep.ToolPackager == toolRelease.Tool.Package.Name &&
-			toolDep.ToolVersion == toolRelease.Version {
+			toolDep.ToolVersion.Equal(toolRelease.Version) {
 			return true
 		}
 	}

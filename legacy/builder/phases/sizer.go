@@ -1,45 +1,30 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2016 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package phases
 
 import (
-	"errors"
 	"regexp"
 	"strconv"
 
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	"github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 )
 
 type Sizer struct {
@@ -47,7 +32,9 @@ type Sizer struct {
 }
 
 func (s *Sizer) Run(ctx *types.Context) error {
-
+	if ctx.OnlyUpdateCompilationDatabase {
+		return nil
+	}
 	if s.SketchError || ctx.CodeModelBuilder != nil {
 		return nil
 	}
@@ -56,7 +43,7 @@ func (s *Sizer) Run(ctx *types.Context) error {
 
 	err := checkSize(ctx, buildProperties)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -103,14 +90,29 @@ func checkSize(ctx *types.Context, buildProperties *properties.Map) error {
 		}
 	}
 
+	ctx.ExecutableSectionsSize = []types.ExecutableSectionSize{
+		{
+			Name:    "text",
+			Size:    textSize,
+			MaxSize: maxTextSize,
+		},
+	}
+	if maxDataSize > 0 {
+		ctx.ExecutableSectionsSize = append(ctx.ExecutableSectionsSize, types.ExecutableSectionSize{
+			Name:    "data",
+			Size:    dataSize,
+			MaxSize: maxDataSize,
+		})
+	}
+
 	if textSize > maxTextSize {
 		logger.Println(constants.LOG_LEVEL_ERROR, constants.MSG_SIZER_TEXT_TOO_BIG)
-		return errors.New("")
+		return errors.New("text section exceeds available space in board")
 	}
 
 	if maxDataSize > 0 && dataSize > maxDataSize {
 		logger.Println(constants.LOG_LEVEL_ERROR, constants.MSG_SIZER_DATA_TOO_BIG)
-		return errors.New("")
+		return errors.New("data section exceeds available space in board")
 	}
 
 	if properties.Get(constants.PROPERTY_WARN_DATA_PERCENT) != "" {
@@ -127,7 +129,13 @@ func checkSize(ctx *types.Context, buildProperties *properties.Map) error {
 }
 
 func execSizeRecipe(ctx *types.Context, properties *properties.Map) (textSize int, dataSize int, eepromSize int, resErr error) {
-	out, _, err := builder_utils.ExecRecipe(ctx, properties, constants.RECIPE_SIZE_PATTERN, false /* stdout */, utils.Capture /* stderr */, utils.Show)
+	command, err := builder_utils.PrepareCommandForRecipe(properties, constants.RECIPE_SIZE_PATTERN, false)
+	if err != nil {
+		resErr = errors.New("Error while determining sketch size: " + err.Error())
+		return
+	}
+
+	out, _, err := utils.ExecCommand(ctx, command, utils.Capture /* stdout */, utils.Show /* stderr */)
 	if err != nil {
 		resErr = errors.New("Error while determining sketch size: " + err.Error())
 		return

@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package packagemanager
 
@@ -126,14 +124,20 @@ func (pm *PackageManager) FindBoardWithFQBN(fqbnIn string) (*cores.Board, error)
 }
 
 // ResolveFQBN returns, in order:
+//
 // - the Package pointed by the fqbn
+//
 // - the PlatformRelease pointed by the fqbn
+//
 // - the Board pointed by the fqbn
+//
 // - the build properties for the board considering also the
-//   configuration part of the fqbn
+// configuration part of the fqbn
+//
 // - the PlatformRelease to be used for the build (if the board
-//   requires a 3rd party core it may be different from the
-//   PlatformRelease pointed by the fqbn)
+// requires a 3rd party core it may be different from the
+// PlatformRelease pointed by the fqbn)
+//
 // - an error if any of the above is not found
 //
 // In case of error the partial results found in the meantime are
@@ -203,8 +207,18 @@ func (pm *PackageManager) ResolveFQBN(fqbn *cores.FQBN) (
 
 // LoadPackageIndex loads a package index by looking up the local cached file from the specified URL
 func (pm *PackageManager) LoadPackageIndex(URL *url.URL) error {
-	_, err := pm.LoadPackageIndexFromFile(pm.IndexDir.Join(path.Base(URL.Path)))
-	return err
+	indexPath := pm.IndexDir.Join(path.Base(URL.Path))
+	index, err := packageindex.LoadIndex(indexPath)
+	if err != nil {
+		return fmt.Errorf("loading json index file %s: %s", indexPath, err)
+	}
+
+	for _, p := range index.Packages {
+		p.URL = URL.String()
+	}
+
+	index.MergeIntoPackages(pm.Packages)
+	return nil
 }
 
 // LoadPackageIndexFromFile load a package index from the specified file
@@ -329,12 +343,29 @@ func (pm *PackageManager) GetInstalledPlatformRelease(platform *cores.Platform) 
 	if len(releases) == 0 {
 		return nil
 	}
+
+	debug := func(msg string, pl *cores.PlatformRelease) {
+		pm.Log.WithField("bundle", pl.IsIDEBundled).
+			WithField("version", pl.Version).
+			WithField("managed", pm.IsManagedPlatformRelease(pl)).
+			Debugf("%s: %s", msg, pl)
+	}
+
 	best := releases[0]
 	bestIsManaged := pm.IsManagedPlatformRelease(best)
+	debug("current best", best)
+
 	for _, candidate := range releases[1:] {
 		candidateIsManaged := pm.IsManagedPlatformRelease(candidate)
+		debug("candidate", candidate)
+		// TODO: Disentangle this algorithm and make it more straightforward
 		if bestIsManaged == candidateIsManaged {
-			if candidate.Version.GreaterThan(best.Version) {
+			if best.IsIDEBundled == candidate.IsIDEBundled {
+				if candidate.Version.GreaterThan(best.Version) {
+					best = candidate
+				}
+			}
+			if best.IsIDEBundled && !candidate.IsIDEBundled {
 				best = candidate
 			}
 		}
@@ -342,6 +373,7 @@ func (pm *PackageManager) GetInstalledPlatformRelease(platform *cores.Platform) 
 			best = candidate
 			bestIsManaged = true
 		}
+		debug("current best", best)
 	}
 	return best
 }
@@ -402,7 +434,7 @@ func (pm *PackageManager) FindToolsRequiredForBoard(board *cores.Board) ([]*core
 	foundTools := map[string]*cores.ToolRelease{}
 
 	// a Platform may not specify required tools (because it's a platform that comes from a
-	// sketchbook/hardware dir without a package_index.json) then add all available tools
+	// user/hardware dir without a package_index.json) then add all available tools
 	for _, targetPackage := range pm.Packages {
 		for _, tool := range targetPackage.Tools {
 			rel := tool.GetLatestInstalled()

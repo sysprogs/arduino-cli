@@ -1,6 +1,6 @@
 // This file is part of arduino-cli.
 //
-// Copyright 2019 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -8,20 +8,22 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package feedback
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/status"
 )
 
 // OutputFormat is used to determine the output format
@@ -68,6 +70,11 @@ func (fb *Feedback) SetFormat(f OutputFormat) {
 	fb.format = f
 }
 
+// GetFormat returns the output format currently set
+func (fb *Feedback) GetFormat() OutputFormat {
+	return fb.format
+}
+
 // OutputWriter returns the underlying io.Writer to be used when the Print*
 // api is not enough.
 func (fb *Feedback) OutputWriter() io.Writer {
@@ -97,6 +104,16 @@ func (fb *Feedback) Print(v interface{}) {
 // Errorf behaves like fmt.Printf but writes on the error writer and adds a
 // newline. It also logs the error.
 func (fb *Feedback) Errorf(format string, v ...interface{}) {
+	// Unbox grpc status errors
+	for i := range v {
+		if s, isStatus := v[i].(*status.Status); isStatus {
+			v[i] = errors.New(s.Message())
+		} else if err, isErr := v[i].(error); isErr {
+			if s, isStatus := status.FromError(err); isStatus {
+				v[i] = errors.New(s.Message())
+			}
+		}
+	}
 	fb.Error(fmt.Sprintf(format, v...))
 }
 
@@ -113,7 +130,7 @@ func (fb *Feedback) printJSON(v interface{}) {
 	if d, err := json.MarshalIndent(v, "", "  "); err != nil {
 		fb.Errorf("Error during JSON encoding of the output: %v", err)
 	} else {
-		fmt.Fprint(fb.out, string(d))
+		fmt.Fprintf(fb.out, "%v\n", string(d))
 	}
 }
 

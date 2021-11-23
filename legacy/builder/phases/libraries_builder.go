@@ -1,50 +1,36 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package phases
 
 import (
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/arduino/arduino-cli/arduino/libraries"
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	"github.com/arduino/go-paths-helper"
 	"github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 )
 
-var PRECOMPILED_LIBRARIES_VALID_EXTENSIONS_STATIC = map[string]bool{".a": true}
-var PRECOMPILED_LIBRARIES_VALID_EXTENSIONS_DYNAMIC = map[string]bool{".so": true}
+var FLOAT_ABI_CFLAG = "float-abi"
+var FPU_CFLAG = "fpu"
 
 type LibrariesBuilder struct{}
 
@@ -55,51 +41,80 @@ func (s *LibrariesBuilder) Run(ctx *types.Context) error {
 	libs := ctx.ImportedLibraries
 
 	if err := librariesBuildPath.MkdirAll(); err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	objectFiles, err := compileLibraries(ctx, libs, librariesBuildPath, buildProperties, includes, ctx.CodeModelBuilder, ctx.UnoptimizeLibraries)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	ctx.LibrariesObjectFiles = objectFiles
-
-	// Search for precompiled libraries
-	fixLDFLAGforPrecompiledLibraries(ctx, libs)
-
 	return nil
 }
 
-func fixLDFLAGforPrecompiledLibraries(ctx *types.Context, libs libraries.List) error {
+func directoryContainsFile(folder *paths.Path) bool {
+	if files, err := folder.ReadDir(); err == nil {
+		files.FilterOutDirs()
+		return len(files) > 0
+	}
+	return false
+}
 
-	for _, library := range libs {
-		if library.Precompiled {
-			// add library src path to compiler.c.elf.extra_flags
-			// use library.Name as lib name and srcPath/{mcpu} as location
-			mcu := ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_BUILD_MCU)
-			path := library.SourceDir.Join(mcu).String()
-			// find all library names in the folder and prepend -l
-			filePaths := []string{}
-			libs_cmd := library.LDflags + " "
-			extensions := func(ext string) bool { return PRECOMPILED_LIBRARIES_VALID_EXTENSIONS_DYNAMIC[ext] }
-			utils.FindFilesInFolder(&filePaths, path, extensions, true)
-			for _, lib := range filePaths {
-				name := strings.TrimSuffix(filepath.Base(lib), filepath.Ext(lib))
-				// strip "lib" first occurrence
-				name = strings.Replace(name, "lib", "", 1)
-				libs_cmd += "-l" + name + " "
+func findExpectedPrecompiledLibFolder(ctx *types.Context, library *libraries.Library) *paths.Path {
+	mcu := ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_BUILD_MCU)
+	// Add fpu specifications if they exist
+	// To do so, resolve recipe.cpp.o.pattern,
+	// search for -mfpu=xxx -mfloat-abi=yyy and add to a subfolder
+	command, _ := builder_utils.PrepareCommandForRecipe(ctx.BuildProperties, constants.RECIPE_CPP_PATTERN, true)
+	fpuSpecs := ""
+	for _, el := range strings.Split(command.String(), " ") {
+		if strings.Contains(el, FPU_CFLAG) {
+			toAdd := strings.Split(el, "=")
+			if len(toAdd) > 1 {
+				fpuSpecs += strings.TrimSpace(toAdd[1]) + "-"
+				break
 			}
-
-			currLDFlags := ctx.BuildProperties.Get(constants.BUILD_PROPERTIES_COMPILER_LIBRARIES_LDFLAGS)
-			ctx.BuildProperties.Set(constants.BUILD_PROPERTIES_COMPILER_LIBRARIES_LDFLAGS, currLDFlags+"\"-L"+path+"\" "+libs_cmd+" ")
 		}
 	}
+	for _, el := range strings.Split(command.String(), " ") {
+		if strings.Contains(el, FLOAT_ABI_CFLAG) {
+			toAdd := strings.Split(el, "=")
+			if len(toAdd) > 1 {
+				fpuSpecs += strings.TrimSpace(toAdd[1]) + "-"
+				break
+			}
+		}
+	}
+
+	logger := ctx.GetLogger()
+	logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Library {0} has been declared precompiled:", library.Name)
+
+	// Try directory with full fpuSpecs first, if available
+	if len(fpuSpecs) > 0 {
+		fpuSpecs = strings.TrimRight(fpuSpecs, "-")
+		fullPrecompDir := library.SourceDir.Join(mcu).Join(fpuSpecs)
+		if fullPrecompDir.Exist() && directoryContainsFile(fullPrecompDir) {
+			logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Using precompiled library in {0}", fullPrecompDir)
+			return fullPrecompDir
+		}
+		logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Precompiled library in \"{0}\" not found", fullPrecompDir)
+	}
+
+	precompDir := library.SourceDir.Join(mcu)
+	if precompDir.Exist() && directoryContainsFile(precompDir) {
+		logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Using precompiled library in {0}", precompDir)
+		return precompDir
+	}
+	logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "Precompiled library in \"{0}\" not found", precompDir)
 	return nil
 }
 
 func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *paths.Path, buildProperties *properties.Map, includes []string, codeModel *types.CodeModelBuilder, unoptimize bool) (paths.PathList, error) {
 	var unoptimizedProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
+	ctx.Progress.AddSubSteps(len(libraries))
+	defer ctx.Progress.RemoveSubSteps()
+
 	objectFiles := paths.NewPathList()
 	for _, library := range libraries {
 		var libraryModel *types.CodeModelLibrary
@@ -119,9 +134,12 @@ func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *p
 	
 		libraryObjectFiles, err := compileLibrary(ctx, library, buildPath, effectiveProperties, includes, libraryModel)
 		if err != nil {
-			return nil, i18n.WrapError(err)
+			return nil, errors.WithStack(err)
 		}
-		objectFiles = append(objectFiles, libraryObjectFiles...)
+		objectFiles.AddAll(libraryObjectFiles)
+
+		ctx.Progress.CompleteStep()
+		builder_utils.PrintProgressIfProgressEnabledAndMachineLogger(ctx)
 	}
 
 	return objectFiles, nil
@@ -135,24 +153,53 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 	libraryBuildPath := buildPath.Join(library.Name)
 
 	if err := libraryBuildPath.MkdirAll(); err != nil {
-		return nil, i18n.WrapError(err)
+		return nil, errors.WithStack(err)
 	}
 
 	objectFiles := paths.NewPathList()
 
 	if library.Precompiled {
-		// search for files with PRECOMPILED_LIBRARIES_VALID_EXTENSIONS
-		extensions := func(ext string) bool { return PRECOMPILED_LIBRARIES_VALID_EXTENSIONS_STATIC[ext] }
+		coreSupportPrecompiled := ctx.BuildProperties.ContainsKey("compiler.libraries.ldflags")
+		precompiledPath := findExpectedPrecompiledLibFolder(ctx, library)
 
-		filePaths := []string{}
-		mcu := buildProperties.Get(constants.BUILD_PROPERTIES_BUILD_MCU)
-		err := utils.FindFilesInFolder(&filePaths, library.SourceDir.Join(mcu).String(), extensions, true)
-		if err != nil {
-			return nil, i18n.WrapError(err)
-		}
-		for _, path := range filePaths {
-			if strings.Contains(filepath.Base(path), library.RealName) {
-				objectFiles.Add(paths.New(path))
+		if !coreSupportPrecompiled {
+			logger := ctx.GetLogger()
+			logger.Fprintln(os.Stdout, constants.LOG_LEVEL_INFO, "The platform does not support 'compiler.libraries.ldflags' for precompiled libraries.")
+
+		} else if precompiledPath != nil {
+			// Find all libraries in precompiledPath
+			libs, err := precompiledPath.ReadDir()
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+
+			// Add required LD flags
+			libsCmd := library.LDflags + " "
+			dynAndStaticLibs := libs.Clone()
+			dynAndStaticLibs.FilterSuffix(".a", ".so")
+			for _, lib := range dynAndStaticLibs {
+				name := strings.TrimSuffix(lib.Base(), lib.Ext())
+				if strings.HasPrefix(name, "lib") {
+					libsCmd += "-l" + name[3:] + " "
+				}
+			}
+
+			currLDFlags := ctx.BuildProperties.Get("compiler.libraries.ldflags")
+			ctx.BuildProperties.Set("compiler.libraries.ldflags", currLDFlags+" \"-L"+precompiledPath.String()+"\" "+libsCmd+" ")
+
+			// TODO: This codepath is just taken for .a with unusual names that would
+			// be ignored by -L / -l methods.
+			// Should we force precompiled libraries to start with "lib" ?
+			staticLibs := libs.Clone()
+			staticLibs.FilterSuffix(".a")
+			for _, lib := range staticLibs {
+				if !strings.HasPrefix(lib.Base(), "lib") {
+					objectFiles.Add(lib)
+				}
+			}
+
+			if library.PrecompiledWithSources {
+				return objectFiles, nil
 			}
 		}
 	}
@@ -160,12 +207,12 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 	if library.Layout == libraries.RecursiveLayout {
 		libObjectFiles, err := builder_utils.CompileFilesRecursive(ctx, library.SourceDir, libraryBuildPath, buildProperties, includes, libraryModel)
 		if err != nil {
-			return nil, i18n.WrapError(err)
+			return nil, errors.WithStack(err)
 		}
 		if library.DotALinkage {
 			archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, libraryBuildPath, paths.New(library.Name+".a"), libObjectFiles, buildProperties, libraryModel)
 			if err != nil {
-				return nil, i18n.WrapError(err)
+				return nil, errors.WithStack(err)
 			}
 			objectFiles.Add(archiveFile)
 		} else {
@@ -177,7 +224,7 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 		}
 		libObjectFiles, err := builder_utils.CompileFiles(ctx, library.SourceDir, false, libraryBuildPath, buildProperties, includes, libraryModel)
 		if err != nil {
-			return nil, i18n.WrapError(err)
+			return nil, errors.WithStack(err)
 		}
 		objectFiles.AddAll(libObjectFiles)
 
@@ -185,7 +232,7 @@ func compileLibrary(ctx *types.Context, library *libraries.Library, buildPath *p
 			utilityBuildPath := libraryBuildPath.Join("utility")
 			utilityObjectFiles, err := builder_utils.CompileFiles(ctx, library.UtilityDir, false, utilityBuildPath, buildProperties, includes, libraryModel)
 			if err != nil {
-				return nil, i18n.WrapError(err)
+				return nil, errors.WithStack(err)
 			}
 			objectFiles.AddAll(utilityObjectFiles)
 		}

@@ -1,13 +1,14 @@
 comment: off
 
-# ignore:
-#   - legacy/**/*
+ignore:
+  - rpc/**
+  - i18n/cmd/**
+  - i18n/rice-box.go
 
 coverage:
   status:
     project:
       default:
-        target: 35%
-        threshold: null
+        target: 30%
     patch: off
     changes: off

@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package packagemanager
 
@@ -24,25 +22,20 @@ import (
 	"strings"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
-	"github.com/arduino/arduino-cli/configs"
+	"github.com/arduino/arduino-cli/configuration"
 	"github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 	semver "go.bug.st/relaxed-semver"
 )
 
 // LoadHardware read all plaforms from the configured paths
-func (pm *PackageManager) LoadHardware(config *configs.Configuration) error {
-	dirs, err := config.HardwareDirectories()
-	if err != nil {
-		return fmt.Errorf("getting hardware directory: %s", err)
-	}
+func (pm *PackageManager) LoadHardware() error {
+	dirs := configuration.HardwareDirectories(configuration.Settings)
 	if err := pm.LoadHardwareFromDirectories(dirs); err != nil {
 		return err
 	}
-	dirs, err = config.BundleToolsDirectories()
-	if err != nil {
-		return fmt.Errorf("getting hardware directory: %s", err)
-	}
+
+	dirs = configuration.BundleToolsDirectories(configuration.Settings)
 	return pm.LoadToolsFromBundleDirectories(dirs)
 }
 
@@ -153,12 +146,12 @@ func (pm *PackageManager) loadPlatforms(targetPackage *cores.Package, packageDir
 	}
 
 	for _, file := range files {
-		architecure := file.Base()
-		if strings.HasPrefix(architecure, ".") || architecure == "tools" ||
-			architecure == "platform.txt" { // TODO: Check if this "platform.txt" condition should be here....
+		architecture := file.Base()
+		if strings.HasPrefix(architecture, ".") || architecture == "tools" ||
+			architecture == "platform.txt" { // TODO: Check if this "platform.txt" condition should be here....
 			continue
 		}
-		platformPath := packageDir.Join(architecure)
+		platformPath := packageDir.Join(architecture)
 		if !platformPath.IsDir() {
 			continue
 		}
@@ -173,19 +166,16 @@ func (pm *PackageManager) loadPlatforms(targetPackage *cores.Package, packageDir
 			return fmt.Errorf("looking for boards.txt in %s: %s", possibleBoardTxtPath, err)
 
 		} else if exist {
-
-			// case: ARCHITECTURE/boards.txt
-			// this is the general case for unversioned Platform
-			version := semver.MustParse("")
-
-			// FIXME: this check is duplicated, find a better way to handle this
-			if exist, err := platformPath.Join("boards.txt").ExistCheck(); err != nil {
-				return fmt.Errorf("opening boards.txt: %s", err)
-			} else if !exist {
-				continue
+			platformTxtPath := platformPath.Join("platform.txt")
+			platformProperties, err := properties.SafeLoad(platformTxtPath.String())
+			if err != nil {
+				return fmt.Errorf("loading platform.txt: %w", err)
 			}
 
+			version := semver.MustParse(platformProperties.Get("version"))
+
 			// check if package_bundled_index.json exists
+			isIDEBundled := false
 			packageBundledIndexPath := packageDir.Parent().Join("package_index_bundled.json")
 			if packageBundledIndexPath.Exist() {
 				// particular case: ARCHITECTURE/boards.txt with package_bundled_index.json
@@ -204,19 +194,25 @@ func (pm *PackageManager) loadPlatforms(targetPackage *cores.Package, packageDir
 				index.MergeIntoPackages(tmp)
 				if tmpPackage := tmp.GetOrCreatePackage(targetPackage.Name); tmpPackage == nil {
 					pm.Log.Warnf("Can't determine bundle platform version for %s", targetPackage.Name)
-				} else if tmpPlatform := tmpPackage.GetOrCreatePlatform(architecure); tmpPlatform == nil {
-					pm.Log.Warnf("Can't determine bundle platform version for %s:%s", targetPackage.Name, architecure)
+				} else if tmpPlatform := tmpPackage.GetOrCreatePlatform(architecture); tmpPlatform == nil {
+					pm.Log.Warnf("Can't determine bundle platform version for %s:%s", targetPackage.Name, architecture)
 				} else if tmpPlatformRelease := tmpPlatform.GetLatestRelease(); tmpPlatformRelease == nil {
-					pm.Log.Warnf("Can't determine bundle platform version for %s:%s, no valid release found", targetPackage.Name, architecure)
+					pm.Log.Warnf("Can't determine bundle platform version for %s:%s, no valid release found", targetPackage.Name, architecture)
 				} else {
 					version = tmpPlatformRelease.Version
 				}
+
+				isIDEBundled = true
 			}
 
-			platform := targetPackage.GetOrCreatePlatform(architecure)
-			release, err := platform.GetOrCreateRelease(version)
-			if err != nil {
-				return fmt.Errorf("loading platform release: %s", err)
+			platform := targetPackage.GetOrCreatePlatform(architecture)
+			if !isIDEBundled {
+				platform.ManuallyInstalled = true
+			}
+			release := platform.GetOrCreateRelease(version)
+			release.IsIDEBundled = isIDEBundled
+			if isIDEBundled {
+				pm.Log.Infof("Package is built-in")
 			}
 			if err := pm.loadPlatformRelease(release, platformPath); err != nil {
 				return fmt.Errorf("loading platform release: %s", err)
@@ -228,7 +224,7 @@ func (pm *PackageManager) loadPlatforms(targetPackage *cores.Package, packageDir
 			// case: ARCHITECTURE/VERSION/boards.txt
 			// let's dive into VERSION directories
 
-			platform := targetPackage.GetOrCreatePlatform(architecure)
+			platform := targetPackage.GetOrCreatePlatform(architecture)
 			versionDirs, err := platformPath.ReadDir()
 			if err != nil {
 				return fmt.Errorf("reading dir %s: %s", platformPath, err)
@@ -246,10 +242,7 @@ func (pm *PackageManager) loadPlatforms(targetPackage *cores.Package, packageDir
 				if err != nil {
 					return fmt.Errorf("invalid version dir %s: %s", versionDir, err)
 				}
-				release, err := platform.GetOrCreateRelease(version)
-				if err != nil {
-					return fmt.Errorf("loading platform release %s: %s", versionDir, err)
-				}
+				release := platform.GetOrCreateRelease(version)
 				if err := pm.loadPlatformRelease(release, versionDir); err != nil {
 					return fmt.Errorf("loading platform release %s: %s", versionDir, err)
 				}
@@ -265,9 +258,19 @@ func (pm *PackageManager) loadPlatformRelease(platform *cores.PlatformRelease, p
 	platform.InstallDir = path
 
 	// Some useful paths
+	installedJSONPath := path.Join("installed.json")
 	platformTxtPath := path.Join("platform.txt")
 	platformTxtLocalPath := path.Join("platform.local.txt")
 	programmersTxtPath := path.Join("programmers.txt")
+
+	// If the installed.json file is found load it, this is done to handle the
+	// case in which the platform's index and its url have been deleted locally,
+	// if we don't load it some information about the platform is lost
+	if installedJSONPath.Exist() {
+		if _, err := pm.LoadPackageIndexFromFile(installedJSONPath); err != nil {
+			return fmt.Errorf("loading %s: %s", installedJSONPath, err)
+		}
+	}
 
 	// Create platform properties
 	platform.Properties = platform.Properties.Clone() // TODO: why CLONE?
@@ -282,12 +285,16 @@ func (pm *PackageManager) loadPlatformRelease(platform *cores.PlatformRelease, p
 		return fmt.Errorf("loading %s: %s", platformTxtLocalPath, err)
 	}
 
+	if platform.Platform.Name == "" {
+		platform.Platform.Name = platform.Properties.Get("name")
+	}
+
 	// Create programmers properties
 	if programmersProperties, err := properties.SafeLoad(programmersTxtPath.String()); err == nil {
-		platform.Programmers = properties.MergeMapsOfProperties(
-			map[string]*properties.Map{},
-			platform.Programmers, // TODO: Very weird, why not an empty one?
-			programmersProperties.FirstLevelOf())
+		for programmerID, programmerProperties := range programmersProperties.FirstLevelOf() {
+			platform.Programmers[programmerID] = pm.loadProgrammer(programmerProperties)
+			platform.Programmers[programmerID].PlatformRelease = platform
+		}
 	} else {
 		return err
 	}
@@ -297,6 +304,13 @@ func (pm *PackageManager) loadPlatformRelease(platform *cores.PlatformRelease, p
 	}
 
 	return nil
+}
+
+func (pm *PackageManager) loadProgrammer(programmerProperties *properties.Map) *cores.Programmer {
+	return &cores.Programmer{
+		Name:       programmerProperties.Get("name"),
+		Properties: programmerProperties,
+	}
 }
 
 func (pm *PackageManager) loadBoards(platform *cores.PlatformRelease) error {

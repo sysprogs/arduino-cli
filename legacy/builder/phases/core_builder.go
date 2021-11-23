@@ -1,44 +1,31 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package phases
 
 import (
 	"os"
+	"strings"
 
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	"github.com/arduino/go-paths-helper"
 	"github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 )
 
 type CoreBuilder struct{}
@@ -49,7 +36,7 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 	var buildProperties = ctx.BuildProperties
 
 	if err := coreBuildPath.MkdirAll(); err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	if coreBuildCachePath != nil {
@@ -60,7 +47,7 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 			coreBuildCachePath = nil
 			ctx.CoreBuildCachePath = nil
 		} else if err := coreBuildCachePath.MkdirAll(); err != nil {
-			return i18n.WrapError(err)
+			return errors.WithStack(err)
 		}
 	}
 
@@ -78,7 +65,7 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 	
 	archiveFile, objectFiles, err := compileCore(ctx, coreBuildPath, coreBuildCachePath, buildProperties, coreModel)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	ctx.CoreArchiveFilePath = archiveFile
@@ -89,8 +76,8 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 
 func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *paths.Path, buildProperties *properties.Map, coreModel *types.CodeModelLibrary) (*paths.Path, paths.PathList, error) {
 	logger := ctx.GetLogger()
-	coreFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_BUILD_CORE_PATH)
-	variantFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_BUILD_VARIANT_PATH)
+	coreFolder := buildProperties.GetPath("build.core.path")
+	variantFolder := buildProperties.GetPath("build.variant.path")
 
 	targetCoreFolder := buildProperties.GetPath(constants.BUILD_PROPERTIES_RUNTIME_PLATFORM_PATH)
 	
@@ -112,7 +99,7 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 	if variantFolder != nil && variantFolder.IsDir() {
 		variantObjectFiles, err = builder_utils.CompileFiles(ctx, variantFolder, true, buildPath, buildProperties, includes, coreModel)
 		if err != nil {
-			return nil, nil, i18n.WrapError(err)
+			return nil, nil, errors.WithStack(err)
 		}
 	}
 
@@ -121,9 +108,12 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 
 	var targetArchivedCore *paths.Path
 	if buildCachePath != nil {
-		archivedCoreName := builder_utils.GetCachedCoreArchiveFileName(buildProperties.Get(constants.BUILD_PROPERTIES_FQBN), realCoreFolder)
+		archivedCoreName := GetCachedCoreArchiveFileName(buildProperties.Get(constants.BUILD_PROPERTIES_FQBN),
+			buildProperties.Get("compiler.optimization_flags"), realCoreFolder)
 		targetArchivedCore = buildCachePath.Join(archivedCoreName)
-		canUseArchivedCore := !builder_utils.CoreOrReferencedCoreHasChanged(realCoreFolder, targetCoreFolder, targetArchivedCore)
+		canUseArchivedCore := !ctx.OnlyUpdateCompilationDatabase &&
+			!ctx.Clean &&
+			!builder_utils.CoreOrReferencedCoreHasChanged(realCoreFolder, targetCoreFolder, targetArchivedCore)
 
 		if canUseArchivedCore {
 			// use archived core
@@ -136,16 +126,16 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 
 	coreObjectFiles, err := builder_utils.CompileFiles(ctx, coreFolder, true, buildPath, buildProperties, includes, coreModel)
 	if err != nil {
-		return nil, nil, i18n.WrapError(err)
+		return nil, nil, errors.WithStack(err)
 	}
 
 	archiveFile, err := builder_utils.ArchiveCompiledFiles(ctx, buildPath, paths.New("core.a"), coreObjectFiles, buildProperties, coreModel)
 	if err != nil {
-		return nil, nil, i18n.WrapError(err)
+		return nil, nil, errors.WithStack(err)
 	}
 
 	// archive core.a
-	if targetArchivedCore != nil && coreModel != nil {
+	if targetArchivedCore != nil && !ctx.OnlyUpdateCompilationDatabase && coreModel != nil {
 		err := archiveFile.CopyTo(targetArchivedCore)
 		if ctx.Verbose {
 			if err == nil {
@@ -159,4 +149,21 @@ func compileCore(ctx *types.Context, buildPath *paths.Path, buildCachePath *path
 	}
 
 	return archiveFile, variantObjectFiles, nil
+}
+
+// GetCachedCoreArchiveFileName returns the filename to be used to store
+// the global cached core.a.
+func GetCachedCoreArchiveFileName(fqbn string, optimizationFlags string, coreFolder *paths.Path) string {
+	fqbnToUnderscore := strings.Replace(fqbn, ":", "_", -1)
+	fqbnToUnderscore = strings.Replace(fqbnToUnderscore, "=", "_", -1)
+	if absCoreFolder, err := coreFolder.Abs(); err == nil {
+		coreFolder = absCoreFolder
+	} // silently continue if absolute path can't be detected
+	hash := utils.MD5Sum([]byte(coreFolder.String() + optimizationFlags))
+	realName := "core_" + fqbnToUnderscore + "_" + hash + ".a"
+	if len(realName) > 100 {
+		// avoid really long names, simply hash the final part
+		realName = "core_" + utils.MD5Sum([]byte(fqbnToUnderscore+"_"+hash)) + ".a"
+	}
+	return realName
 }

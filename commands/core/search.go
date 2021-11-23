@@ -1,39 +1,41 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package core
 
 import (
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
+	"github.com/arduino/arduino-cli/arduino/utils"
 	"github.com/arduino/arduino-cli/commands"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 )
 
-func match(line, searchArgs string) bool {
-	return strings.Contains(strings.ToLower(line), searchArgs)
-}
+// maximumSearchDistance is the maximum Levenshtein distance accepted when using fuzzy search.
+// This value is completely arbitrary and picked randomly.
+const maximumSearchDistance = 20
 
 // PlatformSearch FIXMEDOC
-func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc.PlatformSearchResp, error) {
-	pm := commands.GetPackageManager(instanceID)
+func PlatformSearch(req *rpc.PlatformSearchRequest) (*rpc.PlatformSearchResponse, error) {
+	searchArgs := strings.Trim(req.SearchArgs, " ")
+	allVersions := req.AllVersions
+	pm := commands.GetPackageManager(req.Instance.Id)
 	if pm == nil {
 		return nil, errors.New("invalid instance")
 	}
@@ -43,33 +45,66 @@ func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc
 		vid, pid := searchArgs[:4], searchArgs[5:]
 		res = pm.FindPlatformReleaseProvidingBoardsWithVidPid(vid, pid)
 	} else {
+
+		searchArgs := strings.Split(searchArgs, " ")
+
+		match := func(toTest []string) (bool, error) {
+			if len(searchArgs) == 0 {
+				return true, nil
+			}
+
+			for _, t := range toTest {
+				matches, err := utils.Match(t, searchArgs)
+				if err != nil {
+					return false, err
+				}
+				if matches {
+					return matches, nil
+				}
+			}
+			return false, nil
+		}
+
 		for _, targetPackage := range pm.Packages {
 			for _, platform := range targetPackage.Platforms {
+				// discard invalid platforms
+				// Users can install platforms manually in the Sketchbook hardware folder,
+				// the core search command must operate only on platforms installed through
+				// the PlatformManager, thus we skip the manually installed ones.
+				if platform == nil || platform.Name == "" || platform.ManuallyInstalled {
+					continue
+				}
+
+				// discard invalid releases
 				platformRelease := platform.GetLatestRelease()
 				if platformRelease == nil {
 					continue
 				}
 
-				// platform has a release, check if it matches the search arguments
-				if match(platform.Name, searchArgs) || match(platform.Architecture, searchArgs) {
-					if allVersions {
-						res = append(res, platform.GetAllReleases()...)
-					} else {
-						res = append(res, platformRelease)
-					}
+				// Gather all strings that can be used for searching
+				toTest := []string{
+					platform.String(),
+					platform.Name,
+					platform.Architecture,
+					targetPackage.Name,
+					targetPackage.Maintainer,
+					targetPackage.WebsiteURL,
+				}
+				for _, board := range platformRelease.BoardsManifest {
+					toTest = append(toTest, board.Name)
+				}
+
+				// Search
+				if ok, err := match(toTest); err != nil {
+					return nil, err
+				} else if !ok {
+					continue
+				}
+
+				if allVersions {
+					res = append(res, platform.GetAllReleases()...)
 				} else {
-					// if we didn't find a match in the platform data, search for
-					// a match in the boards manifest
-					for _, board := range platformRelease.BoardsManifest {
-						if match(board.Name, searchArgs) {
-							if allVersions {
-								res = append(res, platform.GetAllReleases()...)
-							} else {
-								res = append(res, platformRelease)
-							}
-							break
-						}
-					}
+					res = append(res, platformRelease)
 				}
 			}
 		}
@@ -77,7 +112,19 @@ func PlatformSearch(instanceID int32, searchArgs string, allVersions bool) (*rpc
 
 	out := make([]*rpc.Platform, len(res))
 	for i, platformRelease := range res {
-		out[i] = PlatformReleaseToRPC(platformRelease)
+		out[i] = commands.PlatformReleaseToRPC(platformRelease)
 	}
-	return &rpc.PlatformSearchResp{SearchOutput: out}, nil
+	// Sort result alphabetically and put deprecated platforms at the bottom
+	sort.Slice(
+		out, func(i, j int) bool {
+			return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		})
+	sort.SliceStable(
+		out, func(i, j int) bool {
+			if !out[i].Deprecated && out[j].Deprecated {
+				return true
+			}
+			return false
+		})
+	return &rpc.PlatformSearchResponse{SearchOutput: out}, nil
 }

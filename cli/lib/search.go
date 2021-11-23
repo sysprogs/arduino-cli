@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package lib
 
@@ -27,8 +25,10 @@ import (
 	"github.com/arduino/arduino-cli/cli/errorcodes"
 	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/cli/instance"
+	"github.com/arduino/arduino-cli/cli/output"
+	"github.com/arduino/arduino-cli/commands"
 	"github.com/arduino/arduino-cli/commands/lib"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	semver "go.bug.st/relaxed-semver"
@@ -37,7 +37,7 @@ import (
 func initSearchCommand() *cobra.Command {
 	searchCommand := &cobra.Command{
 		Use:     "search [LIBRARY_NAME]",
-		Short:   "Searchs for one or more libraries data.",
+		Short:   "Searches for one or more libraries data.",
 		Long:    "Search for one or more libraries data (case insensitive search).",
 		Example: "  " + os.Args[0] + " lib search audio",
 		Args:    cobra.ArbitraryArgs,
@@ -52,14 +52,23 @@ var searchFlags struct {
 }
 
 func runSearchCommand(cmd *cobra.Command, args []string) {
-	instance := instance.CreateInstaceIgnorePlatformIndexErrors()
+	instance := instance.CreateInstanceIgnorePlatformIndexErrors()
+
+	err := commands.UpdateLibrariesIndex(context.Background(), &rpc.UpdateLibrariesIndexRequest{
+		Instance: instance,
+	}, output.ProgressBar())
+	if err != nil {
+		feedback.Errorf("Error updating library index: %v", err)
+		os.Exit(errorcodes.ErrGeneric)
+	}
+
 	logrus.Info("Executing `arduino lib search`")
-	searchResp, err := lib.LibrarySearch(context.Background(), &rpc.LibrarySearchReq{
+	searchResp, err := lib.LibrarySearch(context.Background(), &rpc.LibrarySearchRequest{
 		Instance: instance,
 		Query:    (strings.Join(args, " ")),
 	})
 	if err != nil {
-		feedback.Errorf("Error saerching for Library: %v", err)
+		feedback.Errorf("Error searching for Library: %v", err)
 		os.Exit(errorcodes.ErrGeneric)
 	}
 
@@ -74,7 +83,7 @@ func runSearchCommand(cmd *cobra.Command, args []string) {
 // output from this command requires special formatting, let's create a dedicated
 // feedback.Result implementation
 type result struct {
-	results   *rpc.LibrarySearchResp
+	results   *rpc.LibrarySearchResponse
 	namesOnly bool
 }
 
@@ -90,8 +99,8 @@ func (res result) Data() interface{} {
 
 		names := []LibName{}
 		results := res.results.GetLibraries()
-		for _, lsr := range results {
-			names = append(names, LibName{lsr.Name})
+		for _, lib := range results {
+			names = append(names, LibName{lib.Name})
 		}
 
 		return NamesOnly{
@@ -115,21 +124,50 @@ func (res result) String() string {
 
 	var out strings.Builder
 
-	for _, lsr := range results {
-		out.WriteString(fmt.Sprintf("Name: \"%s\"\n", lsr.Name))
-		if res.namesOnly {
+	if res.results.GetStatus() == rpc.LibrarySearchStatus_LIBRARY_SEARCH_STATUS_FAILED {
+		out.WriteString("No libraries matching your search.\nDid you mean...\n")
+	}
+
+	for _, lib := range results {
+		if res.results.GetStatus() == rpc.LibrarySearchStatus_LIBRARY_SEARCH_STATUS_SUCCESS {
+			out.WriteString(fmt.Sprintf("Name: \"%s\"\n", lib.Name))
+			if res.namesOnly {
+				continue
+			}
+		} else {
+			out.WriteString(fmt.Sprintf("%s\n", lib.Name))
 			continue
 		}
 
-		out.WriteString(fmt.Sprintf("  Author: %s\n", lsr.GetLatest().Author))
-		out.WriteString(fmt.Sprintf("  Maintainer: %s\n", lsr.GetLatest().Maintainer))
-		out.WriteString(fmt.Sprintf("  Sentence: %s\n", lsr.GetLatest().Sentence))
-		out.WriteString(fmt.Sprintf("  Paragraph: %s\n", lsr.GetLatest().Paragraph))
-		out.WriteString(fmt.Sprintf("  Website: %s\n", lsr.GetLatest().Website))
-		out.WriteString(fmt.Sprintf("  Category: %s\n", lsr.GetLatest().Category))
-		out.WriteString(fmt.Sprintf("  Architecture: %s\n", strings.Join(lsr.GetLatest().Architectures, ", ")))
-		out.WriteString(fmt.Sprintf("  Types: %s\n", strings.Join(lsr.GetLatest().Types, ", ")))
-		out.WriteString(fmt.Sprintf("  Versions: %s\n", strings.Replace(fmt.Sprint(versionsFromSearchedLibrary(lsr)), " ", ", ", -1)))
+		latest := lib.GetLatest()
+
+		deps := []string{}
+		for _, dep := range latest.GetDependencies() {
+			if dep.GetVersionConstraint() == "" {
+				deps = append(deps, dep.GetName())
+			} else {
+				deps = append(deps, dep.GetName()+" ("+dep.GetVersionConstraint()+")")
+			}
+		}
+
+		out.WriteString(fmt.Sprintf("  Author: %s\n", latest.Author))
+		out.WriteString(fmt.Sprintf("  Maintainer: %s\n", latest.Maintainer))
+		out.WriteString(fmt.Sprintf("  Sentence: %s\n", latest.Sentence))
+		out.WriteString(fmt.Sprintf("  Paragraph: %s\n", latest.Paragraph))
+		out.WriteString(fmt.Sprintf("  Website: %s\n", latest.Website))
+		if latest.License != "" {
+			out.WriteString(fmt.Sprintf("  License: %s\n", latest.License))
+		}
+		out.WriteString(fmt.Sprintf("  Category: %s\n", latest.Category))
+		out.WriteString(fmt.Sprintf("  Architecture: %s\n", strings.Join(latest.Architectures, ", ")))
+		out.WriteString(fmt.Sprintf("  Types: %s\n", strings.Join(latest.Types, ", ")))
+		out.WriteString(fmt.Sprintf("  Versions: %s\n", strings.Replace(fmt.Sprint(versionsFromSearchedLibrary(lib)), " ", ", ", -1)))
+		if len(latest.ProvidesIncludes) > 0 {
+			out.WriteString(fmt.Sprintf("  Provides includes: %s\n", strings.Join(latest.ProvidesIncludes, ", ")))
+		}
+		if len(latest.Dependencies) > 0 {
+			out.WriteString(fmt.Sprintf("  Dependencies: %s\n", strings.Join(deps, ", ")))
+		}
 	}
 
 	return fmt.Sprintf("%s", out.String())

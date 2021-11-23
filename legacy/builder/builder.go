@@ -1,38 +1,23 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package builder
 
 import (
 	"encoding/json"
 	"io/ioutil"
-	"fmt"
 	"os"
 	"reflect"
 	"strconv"
@@ -41,16 +26,16 @@ import (
 	bldr "github.com/arduino/arduino-cli/arduino/builder"
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/phases"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
+	"github.com/pkg/errors"
 	"github.com/arduino/arduino-cli/arduino/libraries"
 )
 
 var MAIN_FILE_VALID_EXTENSIONS = map[string]bool{".ino": true, ".pde": true}
-var ADDITIONAL_FILE_VALID_EXTENSIONS = map[string]bool{".h": true, ".c": true, ".hpp": true, ".hh": true, ".cpp": true, ".s": true}
-var ADDITIONAL_FILE_VALID_EXTENSIONS_NO_HEADERS = map[string]bool{".c": true, ".cpp": true, ".s": true}
+var ADDITIONAL_FILE_VALID_EXTENSIONS = map[string]bool{".h": true, ".c": true, ".hpp": true, ".hh": true, ".cpp": true, ".S": true}
+var ADDITIONAL_FILE_VALID_EXTENSIONS_NO_HEADERS = map[string]bool{".c": true, ".cpp": true, ".S": true}
 
 const DEFAULT_DEBUG_LEVEL = 5
 const DEFAULT_WARNINGS_LEVEL = "none"
@@ -59,10 +44,6 @@ const DEFAULT_SOFTWARE = "ARDUINO"
 type Builder struct{}
 
 func (s *Builder) Run(ctx *types.Context) error {
-	if ctx.BuildPath == nil {
-		ctx.BuildPath = bldr.GenBuildPath(ctx.SketchLocation)
-	}
-
 	if err := bldr.EnsureBuildPathExists(ctx.BuildPath.String()); err != nil {
 		return err
 	}
@@ -116,8 +97,12 @@ func (s *Builder) Run(ctx *types.Context) error {
 		&RecipeByPrefixSuffixRunner{Prefix: constants.HOOKS_POSTBUILD, Suffix: constants.HOOKS_PATTERN_SUFFIX},
 	}
 
-	mainErr := runCommands(ctx, commands, true)
-	
+	mainErr := runCommands(ctx, commands)
+
+	if ctx.CompilationDatabase != nil {
+		ctx.CompilationDatabase.SaveToFile()
+	}
+
 	if ctx.CodeModelBuilder != nil {
 		var librariesByLocation = map[string]*libraries.Library{}
 
@@ -192,7 +177,7 @@ func (s *Builder) Run(ctx *types.Context) error {
 
 		&phases.Sizer{SketchError: mainErr != nil},
 	}
-	otherErr := runCommands(ctx, commands, false)
+	otherErr := runCommands(ctx, commands)
 
 	if mainErr != nil {
 		return mainErr
@@ -210,7 +195,7 @@ func (s *PreprocessSketch) Run(ctx *types.Context) error {
 	} else {
 		commands = append(commands, &ContainerAddPrototypes{})
 	}
-	return runCommands(ctx, commands, true)
+	return runCommands(ctx, commands)
 }
 
 type Preprocess struct{}
@@ -240,12 +225,12 @@ func (s *Preprocess) Run(ctx *types.Context) error {
 		&PreprocessSketch{},
 	}
 
-	if err := runCommands(ctx, commands, true); err != nil {
+	if err := runCommands(ctx, commands); err != nil {
 		return err
 	}
 
 	// Output arduino-preprocessed source
-	fmt.Println(ctx.Source)
+	ctx.ExecStdout.Write([]byte(ctx.Source))
 	return nil
 }
 
@@ -262,22 +247,21 @@ func (s *ParseHardwareAndDumpBuildProperties) Run(ctx *types.Context) error {
 		&DumpBuildProperties{},
 	}
 
-	return runCommands(ctx, commands, true)
+	return runCommands(ctx, commands)
 }
 
-func runCommands(ctx *types.Context, commands []types.Command, progressEnabled bool) error {
-
-	ctx.Progress.PrintEnabled = progressEnabled
-	ctx.Progress.Progress = 0
+func runCommands(ctx *types.Context, commands []types.Command) error {
+	ctx.Progress.AddSubSteps(len(commands))
+	defer ctx.Progress.RemoveSubSteps()
 
 	for _, command := range commands {
 		PrintRingNameIfDebug(ctx, command)
-		ctx.Progress.Steps = 100.0 / float64(len(commands))
-		builder_utils.PrintProgressIfProgressEnabledAndMachineLogger(ctx)
 		err := command.Run(ctx)
 		if err != nil {
-			return i18n.WrapError(err)
+			return errors.WithStack(err)
 		}
+		ctx.Progress.CompleteStep()
+		builder_utils.PrintProgressIfProgressEnabledAndMachineLogger(ctx)
 	}
 	return nil
 }

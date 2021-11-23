@@ -1,32 +1,18 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- * Copyright 2015 Matthijs Kooijman
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2015 Matthijs Kooijman
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package test
 
@@ -40,27 +26,27 @@ import (
 )
 
 func TestTryBuild001(t *testing.T) {
-	tryBuild(t, "sketch_with_inline_function", "sketch.ino")
+	tryBuild(t, "sketch_with_inline_function", "sketch_with_inline_function.ino")
 }
 
 func TestTryBuild002(t *testing.T) {
-	tryBuild(t, "sketch_with_function_signature_inside_ifdef", "sketch.ino")
+	tryBuild(t, "sketch_with_function_signature_inside_ifdef", "sketch_with_function_signature_inside_ifdef.ino")
 }
 
 func TestTryBuild003(t *testing.T) {
-	tryPreprocess(t, "sketch_no_functions", "main.ino")
+	tryPreprocess(t, "sketch_no_functions", "sketch_no_functions.ino")
 }
 
 func TestTryBuild004(t *testing.T) {
-	tryBuild(t, "sketch_with_const", "sketch.ino")
+	tryBuild(t, "sketch_with_const", "sketch_with_const.ino")
 }
 
 func TestTryBuild005(t *testing.T) {
-	tryBuild(t, "sketch_with_old_lib", "sketch.ino")
+	tryBuild(t, "sketch_with_old_lib", "sketch_with_old_lib.ino")
 }
 
 func TestTryBuild006(t *testing.T) {
-	tryBuild(t, "sketch_with_macosx_garbage", "sketch.ino")
+	tryBuild(t, "sketch_with_macosx_garbage", "sketch_with_macosx_garbage.ino")
 }
 
 func TestTryBuild007(t *testing.T) {
@@ -73,27 +59,27 @@ func TestTryBuild007(t *testing.T) {
 //}
 
 func TestTryBuild009(t *testing.T) {
-	tryBuild(t, "sketch_with_usbcon", "sketch.ino")
+	tryBuild(t, "sketch_with_usbcon", "sketch_with_usbcon.ino")
 }
 
 func TestTryBuild010(t *testing.T) {
-	tryBuild(t, "sketch_with_namespace", "sketch.ino")
+	tryBuild(t, "sketch_with_namespace", "sketch_with_namespace.ino")
 }
 
 func TestTryBuild011(t *testing.T) {
-	tryBuild(t, "sketch_with_inline_function", "sketch.ino")
+	tryBuild(t, "sketch_with_inline_function", "sketch_with_inline_function.ino")
 }
 
 func TestTryBuild012(t *testing.T) {
-	tryBuild(t, "sketch_with_default_args", "sketch.ino")
+	tryBuild(t, "sketch_with_default_args", "sketch_with_default_args.ino")
 }
 
 func TestTryBuild013(t *testing.T) {
-	tryBuild(t, "sketch_with_class", "sketch.ino")
+	tryBuild(t, "sketch_with_class", "sketch_with_class.ino")
 }
 
 func TestTryBuild014(t *testing.T) {
-	tryBuild(t, "sketch_with_backup_files", "sketch.ino")
+	tryBuild(t, "sketch_with_backup_files", "sketch_with_backup_files.ino")
 }
 
 func TestTryBuild015(t *testing.T) {
@@ -106,25 +92,25 @@ func TestTryBuild015(t *testing.T) {
 //}
 
 func TestTryBuild017(t *testing.T) {
-	tryPreprocess(t, "sketch_no_functions_two_files", "main.ino")
+	tryPreprocess(t, "sketch_no_functions_two_files", "sketch_no_functions_two_files.ino")
 }
 
 func TestTryBuild018(t *testing.T) {
-	tryBuild(t, "sketch_that_checks_if_SPI_has_transactions", "sketch.ino")
+	tryBuild(t, "sketch_that_checks_if_SPI_has_transactions", "sketch_that_checks_if_SPI_has_transactions.ino")
 }
 
 func TestTryBuild019(t *testing.T) {
-	tryBuild(t, "sketch_with_ifdef", "sketch.ino")
+	tryBuild(t, "sketch_with_ifdef", "sketch_with_ifdef.ino")
 }
 
 func TestTryBuild020(t *testing.T) {
 	ctx := makeDefaultContext(t)
 	ctx.OtherLibrariesDirs = paths.NewPathList("dependent_libraries", "libraries")
-	tryPreprocessWithContext(t, ctx, "sketch_with_dependend_libraries", "sketch.ino")
+	tryPreprocessWithContext(t, ctx, "sketch_with_dependend_libraries", "sketch_with_dependend_libraries.ino")
 }
 
 func TestTryBuild021(t *testing.T) {
-	tryBuild(t, "sketch_with_function_pointer", "sketch.ino")
+	tryBuild(t, "sketch_with_function_pointer", "sketch_with_function_pointer.ino")
 }
 
 func TestTryBuild022(t *testing.T) {
@@ -134,11 +120,11 @@ func TestTryBuild022(t *testing.T) {
 }
 
 func TestTryBuild023(t *testing.T) {
-	tryBuild(t, "sketch1", "sketch.ino")
+	tryBuild(t, "sketch1", "sketch1.ino")
 }
 
 func TestTryBuild024(t *testing.T) {
-	tryBuild(t, "sketch2", "SketchWithIfDef.ino")
+	tryBuild(t, "SketchWithIfDef", "SketchWithIfDef.ino")
 }
 
 // The library for this sketch is missing
@@ -147,31 +133,31 @@ func TestTryBuild024(t *testing.T) {
 //}
 
 func TestTryBuild026(t *testing.T) {
-	tryBuild(t, "sketch4", "CharWithEscapedDoubleQuote.ino")
+	tryBuild(t, "CharWithEscapedDoubleQuote", "CharWithEscapedDoubleQuote.ino")
 }
 
 func TestTryBuild027(t *testing.T) {
-	tryBuild(t, "sketch5", "IncludeBetweenMultilineComment.ino")
+	tryBuild(t, "IncludeBetweenMultilineComment", "IncludeBetweenMultilineComment.ino")
 }
 
 func TestTryBuild028(t *testing.T) {
-	tryBuild(t, "sketch6", "LineContinuations.ino")
+	tryBuild(t, "LineContinuations", "LineContinuations.ino")
 }
 
 func TestTryBuild029(t *testing.T) {
-	tryBuild(t, "sketch7", "StringWithComment.ino")
+	tryBuild(t, "StringWithComment", "StringWithComment.ino")
 }
 
 func TestTryBuild030(t *testing.T) {
-	tryBuild(t, "sketch8", "SketchWithStruct.ino")
+	tryBuild(t, "SketchWithStruct", "SketchWithStruct.ino")
 }
 
 func TestTryBuild031(t *testing.T) {
-	tryBuild(t, "sketch9", "sketch.ino")
+	tryBuild(t, "sketch9", "sketch9.ino")
 }
 
 func TestTryBuild032(t *testing.T) {
-	tryBuild(t, "sketch10", "sketch.ino")
+	tryBuild(t, "sketch10", "sketch10.ino")
 }
 
 func TestTryBuild033(t *testing.T) {
@@ -189,7 +175,7 @@ func TestTryBuild035(t *testing.T) {
 func TestTryBuild036(t *testing.T) {
 	ctx := makeDefaultContext(t)
 	ctx.FQBN = parseFQBN(t, "arduino:samd:arduino_zero_native")
-	tryBuildWithContext(t, ctx, "sketch11", "sketch_fastleds.ino")
+	tryBuildWithContext(t, ctx, "sketch_fastleds", "sketch_fastleds.ino")
 }
 
 func TestTryBuild037(t *testing.T) {
@@ -222,7 +208,7 @@ func makeDefaultContext(t *testing.T) *types.Context {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware", "downloaded_board_manager_stuff"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware", "downloaded_board_manager_stuff"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),

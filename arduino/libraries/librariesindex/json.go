@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package librariesindex
 
@@ -31,21 +29,23 @@ type indexJSON struct {
 }
 
 type indexRelease struct {
-	Name            string             `json:"name,required"`
-	Version         *semver.Version    `json:"version,required"`
-	Author          string             `json:"author"`
-	Maintainer      string             `json:"maintainer"`
-	Sentence        string             `json:"sentence"`
-	Paragraph       string             `json:"paragraph"`
-	Website         string             `json:"website"`
-	Category        string             `json:"category"`
-	Architectures   []string           `json:"architectures"`
-	Types           []string           `json:"types"`
-	URL             string             `json:"url"`
-	ArchiveFileName string             `json:"archiveFileName"`
-	Size            int64              `json:"size"`
-	Checksum        string             `json:"checksum"`
-	Dependencies    []*indexDependency `json:"dependencies,omitempty"`
+	Name             string             `json:"name,required"`
+	Version          *semver.Version    `json:"version,required"`
+	Author           string             `json:"author"`
+	Maintainer       string             `json:"maintainer"`
+	Sentence         string             `json:"sentence"`
+	Paragraph        string             `json:"paragraph"`
+	Website          string             `json:"website"`
+	Category         string             `json:"category"`
+	Architectures    []string           `json:"architectures"`
+	Types            []string           `json:"types"`
+	URL              string             `json:"url"`
+	ArchiveFileName  string             `json:"archiveFileName"`
+	Size             int64              `json:"size"`
+	Checksum         string             `json:"checksum"`
+	Dependencies     []*indexDependency `json:"dependencies,omitempty"`
+	License          string             `json:"license"`
+	ProvidesIncludes []string           `json:"providesIncludes"`
 }
 
 type indexDependency struct {
@@ -109,8 +109,10 @@ func (indexLib *indexRelease) extractReleaseIn(library *Library) {
 			Checksum:        indexLib.Checksum,
 			CachePath:       "libraries",
 		},
-		Library:      library,
-		Dependencies: indexLib.extractDependencies(),
+		Library:          library,
+		Dependencies:     indexLib.extractDependencies(),
+		License:          indexLib.License,
+		ProvidesIncludes: indexLib.ProvidesIncludes,
 	}
 	library.Releases[indexLib.Version.String()] = release
 	if library.Latest == nil || library.Latest.Version.LessThan(release.Version) {

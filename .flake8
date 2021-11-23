@@ -1,0 +1,9 @@
+# TODO: move this to pyproject.toml when supported: https://gitlab.com/pycqa/flake8/merge_requests/245
+
+[flake8]
+max-line-length = 120
+ignore =
+    E741,
+    # W503 and W504 are mutually exclusive, so one or the other must be ignored.
+    # PEP 8 recommends line break before, so we keep W504.
+    W503

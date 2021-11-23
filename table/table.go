@@ -1,6 +1,6 @@
 // This file is part of arduino-cli.
 //
-// Copyright 2019 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -8,10 +8,10 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package table
 
@@ -80,6 +80,7 @@ func (t *Table) Render() string {
 	average := make([]int, t.columnsCount)
 	widths := make([]int, t.columnsCount)
 	count := make([]int, t.columnsCount)
+	minimum := make([]int, t.columnsCount)
 	for _, row := range t.rows {
 		for x, cell := range row.cells {
 			l := cell.Len()
@@ -98,6 +99,15 @@ func (t *Table) Render() string {
 			average[x] = average[x] / count[x]
 		}
 	}
+	// table headers will dictate the absolute min width
+	for x := range minimum {
+		if t.hasHeader {
+			minimum[x] = t.rows[0].cells[x].Len()
+		} else {
+			minimum[x] = 1
+		}
+	}
+
 	variance := make([]int, t.columnsCount)
 	for _, row := range t.rows {
 		for x, cell := range row.cells {
@@ -127,6 +137,9 @@ func (t *Table) Render() string {
 				case Average:
 					selectedWidth = average[x] + variance[x]*3
 				}
+			}
+			if selectedWidth < minimum[x] {
+				selectedWidth = minimum[x]
 			}
 			res += separator
 			res += cell.Pad(selectedWidth)

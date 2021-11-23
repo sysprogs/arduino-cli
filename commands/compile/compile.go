@@ -1,7 +1,6 @@
-//
 // This file is part of arduino-cli.
 //
-// Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -9,39 +8,83 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
-//
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package compile
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
+	bldr "github.com/arduino/arduino-cli/arduino/builder"
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
 	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/arduino-cli/commands"
-	"github.com/arduino/arduino-cli/configs"
+	"github.com/arduino/arduino-cli/configuration"
 	"github.com/arduino/arduino-cli/legacy/builder"
 	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
-	rpc "github.com/arduino/arduino-cli/rpc/commands"
+	"github.com/arduino/arduino-cli/metrics"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
+	"github.com/segmentio/stats/v4"
 	"github.com/sirupsen/logrus"
 )
 
 // Compile FIXMEDOC
-func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.Writer, config *configs.Configuration, debug bool) (*rpc.CompileResp, error) {
+func Compile(ctx context.Context, req *rpc.CompileRequest, outStream, errStream io.Writer, debug bool) (r *rpc.CompileResponse, e error) {
+
+	// There is a binding between the export binaries setting and the CLI flag to explicitly set it,
+	// since we want this binding to work also for the gRPC interface we must read it here in this
+	// package instead of the cli/compile one, otherwise we'd lose the binding.
+	exportBinaries := configuration.Settings.GetBool("sketch.always_export_binaries")
+	// If we'd just read the binding in any case, even if the request sets the export binaries setting,
+	// the settings value would always overwrite the request one and it wouldn't have any effect
+	// setting it for individual requests. To solve this we use a wrapper.BoolValue to handle
+	// the optionality of this property, otherwise we would have no way of knowing if the property
+	// was set in the request or it's just the default boolean value.
+	if reqExportBinaries := req.GetExportBinaries(); reqExportBinaries != nil {
+		exportBinaries = reqExportBinaries.Value
+	}
+
+	tags := map[string]string{
+		"fqbn":            req.Fqbn,
+		"sketchPath":      metrics.Sanitize(req.SketchPath),
+		"showProperties":  strconv.FormatBool(req.ShowProperties),
+		"preprocess":      strconv.FormatBool(req.Preprocess),
+		"buildProperties": strings.Join(req.BuildProperties, ","),
+		"warnings":        req.Warnings,
+		"verbose":         strconv.FormatBool(req.Verbose),
+		"quiet":           strconv.FormatBool(req.Quiet),
+		"vidPid":          req.VidPid,
+		"exportDir":       metrics.Sanitize(req.GetExportDir()),
+		"jobs":            strconv.FormatInt(int64(req.Jobs), 10),
+		"libraries":       strings.Join(req.Libraries, ","),
+		"clean":           strconv.FormatBool(req.GetClean()),
+		"exportBinaries":  strconv.FormatBool(exportBinaries),
+	}
+
+	// Use defer func() to evaluate tags map when function returns
+	// and set success flag inspecting the error named return parameter
+	defer func() {
+		tags["success"] = "true"
+		if e != nil {
+			tags["success"] = "false"
+		}
+		stats.Incr("compile", stats.M(tags)...)
+	}()
+
 	pm := commands.GetPackageManager(req.GetInstance().GetId())
 	if pm == nil {
 		return nil, errors.New("invalid instance")
@@ -88,30 +131,30 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 	builderCtx.SketchLocation = sketch.FullPath
 
 	// FIXME: This will be redundant when arduino-builder will be part of the cli
-	if packagesDir, err := config.HardwareDirectories(); err == nil {
-		builderCtx.HardwareDirs = packagesDir
+	builderCtx.HardwareDirs = configuration.HardwareDirectories(configuration.Settings)
+	builderCtx.BuiltInToolsDirs = configuration.BundleToolsDirectories(configuration.Settings)
+
+	builderCtx.OtherLibrariesDirs = paths.NewPathList(req.GetLibraries()...)
+	builderCtx.OtherLibrariesDirs.Add(configuration.LibrariesDir(configuration.Settings))
+
+	builderCtx.LibraryDirs = paths.NewPathList(req.Library...)
+
+	if req.GetBuildPath() == "" {
+		builderCtx.BuildPath = bldr.GenBuildPath(sketch.FullPath)
 	} else {
-		return nil, fmt.Errorf("cannot get hardware directories: %s", err)
-	}
-
-	if toolsDir, err := config.BundleToolsDirectories(); err == nil {
-		builderCtx.BuiltInToolsDirs = toolsDir
-	} else {
-		return nil, fmt.Errorf("cannot get bundled tools directories: %s", err)
-	}
-
-	builderCtx.OtherLibrariesDirs = paths.NewPathList()
-	builderCtx.OtherLibrariesDirs.Add(config.LibrariesDir())
-
-	if req.GetBuildPath() != "" {
 		builderCtx.BuildPath = paths.New(req.GetBuildPath())
-		err = builderCtx.BuildPath.MkdirAll()
-		if err != nil {
-			return nil, fmt.Errorf("cannot create build directory: %s", err)
-		}
 	}
+	if err = builderCtx.BuildPath.MkdirAll(); err != nil {
+		return nil, fmt.Errorf("cannot create build directory: %s", err)
+	}
+	builderCtx.CompilationDatabase = bldr.NewCompilationDatabase(
+		builderCtx.BuildPath.Join("compile_commands.json"),
+	)
 
 	builderCtx.Verbose = req.GetVerbose()
+
+	// Optimize for debug
+	builderCtx.OptimizeForDebug = req.GetOptimizeForDebug()
 
 	builderCtx.CoreBuildCachePath = paths.TempDir().Join("arduino-core-cache")
 
@@ -140,7 +183,8 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 	builderCtx.ArduinoAPIVersion = "10607"
 
 	// Check if Arduino IDE is installed and get it's libraries location.
-	preferencesTxt := config.DataDir.Join("preferences.txt")
+	dataDir := paths.New(configuration.Settings.GetString("directories.Data"))
+	preferencesTxt := dataDir.Join("preferences.txt")
 	ideProperties, err := properties.LoadFromPath(preferencesTxt)
 	if err == nil {
 		lastIdeSubProperties := ideProperties.SubTree("last").SubTree("ide")
@@ -160,76 +204,87 @@ func Compile(ctx context.Context, req *rpc.CompileReq, outStream, errStream io.W
 	builderCtx.ExecStdout = outStream
 	builderCtx.ExecStderr = errStream
 	builderCtx.SetLogger(i18n.LoggerToCustomStreams{Stdout: outStream, Stderr: errStream})
+	builderCtx.Clean = req.GetClean()
+	builderCtx.OnlyUpdateCompilationDatabase = req.GetCreateCompilationDatabaseOnly()
+
+	builderCtx.SourceOverride = req.GetSourceOverride()
+
+	r = &rpc.CompileResponse{}
+	defer func() {
+		if p := builderCtx.BuildPath; p != nil {
+			r.BuildPath = p.String()
+		}
+	}()
 
 	// if --preprocess or --show-properties were passed, we can stop here
 	if req.GetShowProperties() {
-		return &rpc.CompileResp{}, builder.RunParseHardwareAndDumpBuildProperties(builderCtx)
+		return r, builder.RunParseHardwareAndDumpBuildProperties(builderCtx)
 	} else if req.GetPreprocess() {
-		return &rpc.CompileResp{}, builder.RunPreprocess(builderCtx)
+		return r, builder.RunPreprocess(builderCtx)
 	}
 
 	// if it's a regular build, go on...
 	if err := builder.RunBuilder(builderCtx); err != nil {
-		return nil, fmt.Errorf("build failed: %s", err)
+		return r, err
 	}
 
-	// FIXME: Make a function to obtain these info...
-	outputPath := paths.New(
-		builderCtx.BuildProperties.ExpandPropsInString("{build.path}/{recipe.output.tmp_file}")) // "/build/path/sketch.ino.bin"
-	ext := outputPath.Ext()          // ".hex" | ".bin"
-	base := outputPath.Base()        // "sketch.ino.hex"
-	base = base[:len(base)-len(ext)] // "sketch.ino"
-
-	// FIXME: Make a function to produce a better name...
-	// Make the filename without the FQBN configs part
-	fqbn.Configs = properties.NewMap()
-	fqbnSuffix := strings.Replace(fqbn.String(), ":", ".", -1)
-
-	var exportPath *paths.Path
-	var exportFile string
-	if req.GetExportFile() == "" {
-		if sketch.FullPath.IsDir() {
-			exportPath = sketch.FullPath
+	// If the export directory is set we assume you want to export the binaries
+	if req.GetExportDir() != "" {
+		exportBinaries = true
+	}
+	// If CreateCompilationDatabaseOnly is set, we do not need to export anything
+	if req.GetCreateCompilationDatabaseOnly() {
+		exportBinaries = false
+	}
+	if exportBinaries {
+		var exportPath *paths.Path
+		if exportDir := req.GetExportDir(); exportDir != "" {
+			exportPath = paths.New(exportDir)
 		} else {
-			exportPath = sketch.FullPath.Parent()
+			// Add FQBN (without configs part) to export path
+			fqbnSuffix := strings.Replace(fqbn.StringWithoutConfig(), ":", ".", -1)
+			exportPath = sketch.FullPath.Join("build", fqbnSuffix)
 		}
-		exportFile = sketch.Name + "." + fqbnSuffix // "sketch.arduino.avr.uno"
-	} else {
-		exportPath = paths.New(req.GetExportFile()).Parent()
-		exportFile = paths.New(req.GetExportFile()).Base()
-		if strings.HasSuffix(exportFile, ext) {
-			exportFile = exportFile[:len(exportFile)-len(ext)]
+		logrus.WithField("path", exportPath).Trace("Saving sketch to export path.")
+		if err := exportPath.MkdirAll(); err != nil {
+			return r, errors.Wrap(err, "creating output dir")
+		}
+
+		// Copy all "sketch.ino.*" artifacts to the export directory
+		baseName, ok := builderCtx.BuildProperties.GetOk("build.project_name") // == "sketch.ino"
+		if !ok {
+			return r, errors.New("missing 'build.project_name' build property")
+		}
+		buildFiles, err := builderCtx.BuildPath.ReadDir()
+		if err != nil {
+			return r, errors.Errorf("reading build directory: %s", err)
+		}
+		buildFiles.FilterPrefix(baseName)
+		for _, buildFile := range buildFiles {
+			exportedFile := exportPath.Join(buildFile.Base())
+			logrus.
+				WithField("src", buildFile).
+				WithField("dest", exportedFile).
+				Trace("Copying artifact.")
+			if err = buildFile.CopyTo(exportedFile); err != nil {
+				return r, errors.Wrapf(err, "copying output file %s", buildFile)
+			}
 		}
 	}
 
-	// Copy "sketch.ino.*.hex" / "sketch.ino.*.bin" artifacts to sketch directory
-	srcDir, err := outputPath.Parent().ReadDir() // read "/build/path/*"
-	if err != nil {
-		return nil, fmt.Errorf("reading build directory: %s", err)
-	}
-	srcDir.FilterPrefix(base + ".")
-	srcDir.FilterSuffix(ext)
-	for _, srcOutput := range srcDir {
-		srcFilename := srcOutput.Base()       // "sketch.ino.*.bin"
-		srcFilename = srcFilename[len(base):] // ".*.bin"
-		dstOutput := exportPath.Join(exportFile + srcFilename)
-		logrus.WithField("from", srcOutput).WithField("to", dstOutput).Debug("copying sketch build output")
-		if err = srcOutput.CopyTo(dstOutput); err != nil {
-			return nil, fmt.Errorf("copying output file: %s", err)
+	importedLibs := []*rpc.Library{}
+	for _, lib := range builderCtx.ImportedLibraries {
+		rpcLib, err := lib.ToRPCLibrary()
+		if err != nil {
+			return r, fmt.Errorf("converting library %s to rpc struct: %w", lib.Name, err)
 		}
-	}
-
-	// Copy .elf file to sketch directory
-	srcElf := outputPath.Parent().Join(base + ".elf")
-	if srcElf.Exist() {
-		dstElf := exportPath.Join(exportFile + ".elf")
-		logrus.WithField("from", srcElf).WithField("to", dstElf).Debug("copying sketch build output")
-		if err = srcElf.CopyTo(dstElf); err != nil {
-			return nil, fmt.Errorf("copying elf file: %s", err)
-		}
+		importedLibs = append(importedLibs, rpcLib)
 	}
 
 	logrus.Tracef("Compile %s for %s successful", sketch.Name, fqbnIn)
 
-	return &rpc.CompileResp{}, nil
+	return &rpc.CompileResponse{
+		UsedLibraries:          importedLibs,
+		ExecutableSectionsSize: builderCtx.ExecutableSectionsSize.ToRPCExecutableSectionSizeArray(),
+	}, nil
 }

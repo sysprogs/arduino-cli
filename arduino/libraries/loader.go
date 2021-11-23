@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package libraries
 
@@ -21,8 +19,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/arduino/arduino-cli/arduino/sketches"
 	"github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 	semver "go.bug.st/relaxed-semver"
 )
 
@@ -57,6 +57,14 @@ func makeNewLibrary(libraryDir *paths.Path, location LibraryLocation) (*Library,
 		}
 	}
 
+	commaSeparatedToList := func(in string) []string {
+		res := []string{}
+		for _, e := range strings.Split(in, ",") {
+			res = append(res, strings.TrimSpace(e))
+		}
+		return res
+	}
+
 	library := &Library{}
 	library.Location = location
 	library.InstallDir = libraryDir
@@ -72,10 +80,7 @@ func makeNewLibrary(libraryDir *paths.Path, location LibraryLocation) (*Library,
 	if libProperties.Get("architectures") == "" {
 		libProperties.Set("architectures", "*")
 	}
-	library.Architectures = []string{}
-	for _, arch := range strings.Split(libProperties.Get("architectures"), ",") {
-		library.Architectures = append(library.Architectures, strings.TrimSpace(arch))
-	}
+	library.Architectures = commaSeparatedToList(libProperties.Get("architectures"))
 
 	libProperties.Set("category", strings.TrimSpace(libProperties.Get("category")))
 	if !ValidCategories[libProperties.Get("category")] {
@@ -96,6 +101,13 @@ func makeNewLibrary(libraryDir *paths.Path, location LibraryLocation) (*Library,
 		library.Version = v
 	}
 
+	if includes := libProperties.Get("includes"); includes != "" {
+		library.declaredHeaders = commaSeparatedToList(includes)
+	}
+
+	if err := addExamples(library); err != nil {
+		return nil, errors.Errorf("scanning examples: %s", err)
+	}
 	library.Name = libraryDir.Base()
 	library.RealName = strings.TrimSpace(libProperties.Get("name"))
 	library.Author = strings.TrimSpace(libProperties.Get("author"))
@@ -105,7 +117,8 @@ func makeNewLibrary(libraryDir *paths.Path, location LibraryLocation) (*Library,
 	library.Website = strings.TrimSpace(libProperties.Get("url"))
 	library.IsLegacy = false
 	library.DotALinkage = libProperties.GetBoolean("dot_a_linkage")
-	library.Precompiled = libProperties.GetBoolean("precompiled")
+	library.PrecompiledWithSources = libProperties.Get("precompiled") == "full"
+	library.Precompiled = libProperties.Get("precompiled") == "true" || library.PrecompiledWithSources
 	library.LDflags = strings.TrimSpace(libProperties.Get("ldflags"))
 	library.Properties = libProperties
 
@@ -123,6 +136,51 @@ func makeLegacyLibrary(path *paths.Path, location LibraryLocation) (*Library, er
 		IsLegacy:      true,
 		Version:       semver.MustParse(""),
 	}
+	if err := addExamples(library); err != nil {
+		return nil, errors.Errorf("scanning examples: %s", err)
+	}
 	addUtilityDirectory(library)
 	return library, nil
+}
+
+func addExamples(lib *Library) error {
+	files, err := lib.InstallDir.ReadDir()
+	if err != nil {
+		return err
+	}
+	examples := paths.NewPathList()
+	for _, file := range files {
+		name := strings.ToLower(file.Base())
+		if name != "example" && name != "examples" {
+			continue
+		}
+		if !file.IsDir() {
+			continue
+		}
+		if err := addExamplesToPathList(file, &examples); err != nil {
+			return err
+		}
+		break
+	}
+
+	lib.Examples = examples
+	return nil
+}
+
+func addExamplesToPathList(examplesPath *paths.Path, list *paths.PathList) error {
+	files, err := examplesPath.ReadDir()
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		_, err := sketches.NewSketchFromPath(file)
+		if err == nil {
+			list.Add(file)
+		} else if file.IsDir() {
+			if err := addExamplesToPathList(file, list); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

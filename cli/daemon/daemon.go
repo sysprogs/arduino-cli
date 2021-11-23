@@ -1,7 +1,6 @@
-//
 // This file is part of arduino-cli.
 //
-// Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -9,46 +8,50 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
-//
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
-	"net/http"
 	"os"
-	"runtime"
+	"syscall"
 
+	"github.com/arduino/arduino-cli/cli/errorcodes"
+	"github.com/arduino/arduino-cli/cli/feedback"
 	"github.com/arduino/arduino-cli/cli/globals"
 	"github.com/arduino/arduino-cli/commands/daemon"
-	srv_commands "github.com/arduino/arduino-cli/rpc/commands"
-	srv_monitor "github.com/arduino/arduino-cli/rpc/monitor"
+	"github.com/arduino/arduino-cli/configuration"
+	"github.com/arduino/arduino-cli/metrics"
+	srv_commands "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
+	srv_debug "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/debug/v1"
+	srv_monitor "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/monitor/v1"
+	srv_settings "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/settings/v1"
+	"github.com/segmentio/stats/v4"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-)
-
-const (
-	port = ":50051"
 )
 
 // NewCommand created a new `daemon` command
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "daemon",
-		Short:   fmt.Sprintf("Run as a daemon on port %s", port),
+		Short:   fmt.Sprintf("Run as a daemon on port %s", configuration.Settings.GetString("daemon.port")),
 		Long:    "Running as a daemon the initialization of cores and libraries is done only once.",
 		Example: "  " + os.Args[0] + " daemon",
 		Args:    cobra.NoArgs,
 		Run:     runDaemonCommand,
 	}
+	cmd.PersistentFlags().String("port", "", "The TCP port the daemon will listen to")
+	configuration.Settings.BindPFlag("daemon.port", cmd.PersistentFlags().Lookup("port"))
 	cmd.Flags().BoolVar(&daemonize, "daemonize", false, "Do not terminate daemon process if the parent process dies")
 	return cmd
 }
@@ -56,38 +59,70 @@ func NewCommand() *cobra.Command {
 var daemonize bool
 
 func runDaemonCommand(cmd *cobra.Command, args []string) {
+
+	if configuration.Settings.GetBool("metrics.enabled") {
+		metrics.Activate("daemon")
+		stats.Incr("daemon", stats.T("success", "true"))
+		defer stats.Flush()
+	}
+	port := configuration.Settings.GetString("daemon.port")
 	s := grpc.NewServer()
 
+	// Set specific user-agent for the daemon
+	configuration.Settings.Set("network.user_agent_ext", "daemon")
+
 	// register the commands service
-	headers := http.Header{"User-Agent": []string{
-		fmt.Sprintf("%s/%s daemon (%s; %s; %s) Commit:%s",
-			globals.VersionInfo.Application,
-			globals.VersionInfo.VersionString,
-			runtime.GOARCH, runtime.GOOS,
-			runtime.Version(), globals.VersionInfo.Commit)}}
-	srv_commands.RegisterArduinoCoreServer(s, &daemon.ArduinoCoreServerImpl{
-		DownloaderHeaders: headers,
-		VersionString:     globals.VersionInfo.VersionString,
-		Config:            globals.Config,
+	srv_commands.RegisterArduinoCoreServiceServer(s, &daemon.ArduinoCoreServerImpl{
+		VersionString: globals.VersionInfo.VersionString,
 	})
 
-	// register the monitors service
-	srv_monitor.RegisterMonitorServer(s, &daemon.MonitorService{})
+	// Register the monitors service
+	srv_monitor.RegisterMonitorServiceServer(s, &daemon.MonitorService{})
+
+	// Register the settings service
+	srv_settings.RegisterSettingsServiceServer(s, &daemon.SettingsService{})
+
+	// Register the debug session service
+	srv_debug.RegisterDebugServiceServer(s, &daemon.DebugService{})
 
 	if !daemonize {
 		// When parent process ends terminate also the daemon
 		go func() {
-			// stdin is closed when the controlling parent process ends
+			// Stdin is closed when the controlling parent process ends
 			_, _ = io.Copy(ioutil.Discard, os.Stdin)
+			// Flush metrics stats (this is a no-op if metrics is disabled)
+			stats.Flush()
 			os.Exit(0)
 		}()
 	}
 
-	lis, err := net.Listen("tcp", port)
+	logrus.Infof("Starting daemon on TCP address 127.0.0.1:%s", port)
+	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%s", port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		// Invalid port, such as "Foo"
+		var dnsError *net.DNSError
+		if errors.As(err, &dnsError) {
+			feedback.Errorf("Failed to listen on TCP port: %s. %s is unknown name.", port, dnsError.Name)
+			os.Exit(errorcodes.ErrCoreConfig)
+		}
+		// Invalid port number, such as -1
+		var addrError *net.AddrError
+		if errors.As(err, &addrError) {
+			feedback.Errorf("Failed to listen on TCP port: %s. %s is an invalid port.", port, addrError.Addr)
+			os.Exit(errorcodes.ErrCoreConfig)
+		}
+		// Port is already in use
+		var syscallErr *os.SyscallError
+		if errors.As(err, &syscallErr) && errors.Is(syscallErr.Err, syscall.EADDRINUSE) {
+			feedback.Errorf("Failed to listen on TCP port: %s. Address already in use.", port)
+			os.Exit(errorcodes.ErrNetwork)
+		}
+		feedback.Errorf("Failed to listen on TCP port: %s. Unexpected error: %v", port, err)
+		os.Exit(errorcodes.ErrGeneric)
 	}
+	// This message will show up on the stdout of the daemon process so that gRPC clients know it is time to connect.
+	logrus.Infof("Daemon is now listening on 127.0.0.1:%s...", port)
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		logrus.Fatalf("Failed to serve: %v", err)
 	}
 }

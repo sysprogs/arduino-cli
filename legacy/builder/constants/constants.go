@@ -1,32 +1,18 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- * Copyright 2015 Matthijs Kooijman
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2015 Matthijs Kooijman
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package constants
 
@@ -37,18 +23,14 @@ const BUILD_PROPERTIES_ARCH_OVERRIDE_CHECK = "architecture.override_check"
 const BUILD_PROPERTIES_BOOTLOADER_FILE = "bootloader.file"
 const BUILD_PROPERTIES_BOOTLOADER_NOBLINK = "bootloader.noblink"
 const BUILD_PROPERTIES_BUILD_BOARD = "build.board"
-const BUILD_PROPERTIES_BUILD_CORE_PATH = "build.core.path"
 const BUILD_PROPERTIES_BUILD_MCU = "build.mcu"
-const BUILD_PROPERTIES_BUILD_VARIANT_PATH = "build.variant.path"
 const BUILD_PROPERTIES_COMPILER_C_ELF_FLAGS = "compiler.c.elf.flags"
 const BUILD_PROPERTIES_COMPILER_LDFLAGS = "compiler.ldflags"
-const BUILD_PROPERTIES_COMPILER_LIBRARIES_LDFLAGS = "compiler.libraries.ldflags"
 const BUILD_PROPERTIES_COMPILER_CPP_FLAGS = "compiler.cpp.flags"
 const BUILD_PROPERTIES_COMPILER_WARNING_FLAGS = "compiler.warning_flags"
 const BUILD_PROPERTIES_FQBN = "build.fqbn"
 const BUILD_PROPERTIES_INCLUDES = "includes"
 const BUILD_PROPERTIES_OBJECT_FILE = "object_file"
-const BUILD_PROPERTIES_OBJECT_FILES = "object_files"
 const BUILD_PROPERTIES_PATTERN = "pattern"
 const BUILD_PROPERTIES_PID = "pid"
 const BUILD_PROPERTIES_PREPROCESSED_FILE_PATH = "preprocessed_file_path"
@@ -60,7 +42,6 @@ const CTAGS = "ctags"
 const EMPTY_STRING = ""
 const FILE_CTAGS_TARGET_FOR_GCC_MINUS_E = "ctags_target_for_gcc_minus_e.cpp"
 const FILE_PLATFORM_KEYS_REWRITE_TXT = "platform.keys.rewrite.txt"
-const FILE_INCLUDES_CACHE = "includes.cache"
 const FOLDER_BOOTLOADERS = "bootloaders"
 const FOLDER_CORE = "core"
 const FOLDER_PREPROC = "preproc"
@@ -102,14 +83,16 @@ const LOG_LEVEL_WARN = "warn"
 const MSG_ARCH_FOLDER_NOT_SUPPORTED = "'arch' folder is no longer supported! See http://goo.gl/gfFJzU for more information"
 const MSG_ARCHIVING_CORE_CACHE = "Archiving built core (caching) in: {0}"
 const MSG_ERROR_ARCHIVING_CORE_CACHE = "Error archiving built core (caching) in {0}: {1}"
-const MSG_CORE_CACHE_UNAVAILABLE = "Unable to cache built core, please tell {0} maintainers to follow http://goo.gl/QdCUjo"
+const MSG_CORE_CACHE_UNAVAILABLE = "Unable to cache built core, please tell {0} maintainers to follow https://arduino.github.io/arduino-cli/latest/platform-specification/#recipes-to-build-the-corea-archive-file"
 const MSG_BOARD_UNKNOWN = "Board {0} (platform {1}, package {2}) is unknown"
 const MSG_BOOTLOADER_FILE_MISSING = "Bootloader file specified but missing: {0}"
-const MSG_BUILD_OPTIONS_CHANGED = "Build options changed, rebuilding all"
+const MSG_REBUILD_ALL = ", rebuilding all"
+const MSG_BUILD_OPTIONS_CHANGED = "Build options changed"
+const MSG_BUILD_OPTIONS_INVALID = "{0} invalid"
 const MSG_CANT_FIND_SKETCH_IN_PATH = "Unable to find {0} in {1}"
 const MSG_FQBN_INVALID = "{0} is not a valid fully qualified board name. Required format is targetPackageName:targetPlatformName:targetBoardName."
+const MSG_SKIP_PRECOMPILED_LIBRARY = "Skipping dependencies detection for precompiled library {0}"
 const MSG_FIND_INCLUDES_FAILED = "Error while detecting libraries included by {0}"
-const MSG_INVALID_QUOTING = "Invalid quoting: no closing [{0}] char found."
 const MSG_LIB_LEGACY = "(legacy)"
 const MSG_LIBRARIES_MULTIPLE_LIBS_FOUND_FOR = "Multiple libraries were found for \"{0}\""
 const MSG_LIBRARIES_NOT_USED = " Not used: {0}"
@@ -120,7 +103,6 @@ const MSG_LOOKING_FOR_RECIPES = "Looking for recipes like {0}*{1}"
 const MSG_MISSING_BUILD_BOARD = "Warning: Board {0}:{1}:{2} doesn''t define a ''build.board'' preference. Auto-set to: {3}"
 const MSG_MISSING_CORE_FOR_BOARD = "Selected board depends on '{0}' core (not installed)."
 const MSG_PACKAGE_UNKNOWN = "{0}: Unknown package"
-const MSG_PATTERN_MISSING = "{0} pattern is missing"
 const MSG_PLATFORM_UNKNOWN = "Platform {0} (package {1}) is unknown"
 const MSG_PROGRESS = "Progress {0}"
 const MSG_PROP_IN_LIBRARY = "Missing '{0}' from library in {1}"
@@ -130,8 +112,8 @@ const MSG_SETTING_BUILD_PATH = "Setting build path to {0}"
 const MSG_SIZER_TEXT_FULL = "Sketch uses {0} bytes ({2}%%) of program storage space. Maximum is {1} bytes."
 const MSG_SIZER_DATA_FULL = "Global variables use {0} bytes ({2}%%) of dynamic memory, leaving {3} bytes for local variables. Maximum is {1} bytes."
 const MSG_SIZER_DATA = "Global variables use {0} bytes of dynamic memory."
-const MSG_SIZER_TEXT_TOO_BIG = "Sketch too big; see http://www.arduino.cc/en/Guide/Troubleshooting#size for tips on reducing it."
-const MSG_SIZER_DATA_TOO_BIG = "Not enough memory; see http://www.arduino.cc/en/Guide/Troubleshooting#size for tips on reducing your footprint."
+const MSG_SIZER_TEXT_TOO_BIG = "Sketch too big; see https://support.arduino.cc/hc/en-us/articles/360013825179 for tips on reducing it."
+const MSG_SIZER_DATA_TOO_BIG = "Not enough memory; see https://support.arduino.cc/hc/en-us/articles/360013825179 for tips on reducing your footprint."
 const MSG_SIZER_LOW_MEMORY = "Low memory available, stability problems may occur."
 const MSG_SIZER_ERROR_NO_RULE = "Couldn't determine program size"
 const MSG_SKETCH_CANT_BE_IN_BUILDPATH = "Sketch cannot be located in build path. Please specify a different build path"
@@ -169,7 +151,6 @@ const RECIPE_SIZE_REGEXP_EEPROM = "recipe.size.regex.eeprom"
 const REWRITING_DISABLED = "disabled"
 const REWRITING = "rewriting"
 const SPACE = " "
-const SKETCH_FOLDER_SRC = "src"
 const TOOL_NAME = "name"
 const TOOL_URL = "url"
 const TOOL_VERSION = "version"

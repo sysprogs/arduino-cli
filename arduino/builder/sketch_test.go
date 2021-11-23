@@ -1,6 +1,6 @@
 // This file is part of arduino-cli.
 //
-// Copyright 2019 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -8,10 +8,10 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package builder_test
 
@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/arduino/arduino-cli/arduino/builder"
-	"github.com/arduino/arduino-cli/arduino/sketch"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,7 +39,7 @@ func TestSaveSketch(t *testing.T) {
 		t.Fatalf("unable to read golden file %s: %v", sketchFile, err)
 	}
 
-	builder.SketchSaveItemCpp(&sketch.Item{Path: sketchName, Source: source}, tmp)
+	builder.SketchSaveItemCpp(sketchName, source, tmp)
 
 	out, err := ioutil.ReadFile(filepath.Join(tmp, outName))
 	if err != nil {
@@ -66,6 +65,11 @@ func TestLoadSketchFolder(t *testing.T) {
 	require.Equal(t, "header.h", filepath.Base(s.AdditionalFiles[0].Path))
 	require.Equal(t, "s_file.S", filepath.Base(s.AdditionalFiles[1].Path))
 	require.Equal(t, "helper.h", filepath.Base(s.AdditionalFiles[2].Path))
+	require.Len(t, s.RootFolderFiles, 4)
+	require.Equal(t, "header.h", filepath.Base(s.RootFolderFiles[0].Path))
+	require.Equal(t, "old.pde", filepath.Base(s.RootFolderFiles[1].Path))
+	require.Equal(t, "other.ino", filepath.Base(s.RootFolderFiles[2].Path))
+	require.Equal(t, "s_file.S", filepath.Base(s.RootFolderFiles[3].Path))
 
 	// pass the path to the main file
 	sketchPath = mainFilePath
@@ -80,6 +84,11 @@ func TestLoadSketchFolder(t *testing.T) {
 	require.Equal(t, "header.h", filepath.Base(s.AdditionalFiles[0].Path))
 	require.Equal(t, "s_file.S", filepath.Base(s.AdditionalFiles[1].Path))
 	require.Equal(t, "helper.h", filepath.Base(s.AdditionalFiles[2].Path))
+	require.Len(t, s.RootFolderFiles, 4)
+	require.Equal(t, "header.h", filepath.Base(s.RootFolderFiles[0].Path))
+	require.Equal(t, "old.pde", filepath.Base(s.RootFolderFiles[1].Path))
+	require.Equal(t, "other.ino", filepath.Base(s.RootFolderFiles[2].Path))
+	require.Equal(t, "s_file.S", filepath.Base(s.RootFolderFiles[3].Path))
 }
 
 func TestLoadSketchFolderPde(t *testing.T) {
@@ -98,6 +107,11 @@ func TestLoadSketchFolderPde(t *testing.T) {
 	require.Equal(t, "header.h", filepath.Base(s.AdditionalFiles[0].Path))
 	require.Equal(t, "s_file.S", filepath.Base(s.AdditionalFiles[1].Path))
 	require.Equal(t, "helper.h", filepath.Base(s.AdditionalFiles[2].Path))
+	require.Len(t, s.RootFolderFiles, 4)
+	require.Equal(t, "header.h", filepath.Base(s.RootFolderFiles[0].Path))
+	require.Equal(t, "old.pde", filepath.Base(s.RootFolderFiles[1].Path))
+	require.Equal(t, "other.ino", filepath.Base(s.RootFolderFiles[2].Path))
+	require.Equal(t, "s_file.S", filepath.Base(s.RootFolderFiles[3].Path))
 }
 
 func TestLoadSketchFolderBothInoAndPde(t *testing.T) {
@@ -105,7 +119,7 @@ func TestLoadSketchFolderBothInoAndPde(t *testing.T) {
 	sketchPath := filepath.Join("testdata", t.Name())
 	_, err := builder.SketchLoad(sketchPath, "")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "more than one main sketch file found")
+	require.Contains(t, err.Error(), "multiple main sketch files found")
 	require.Contains(t, err.Error(), t.Name()+".ino")
 	require.Contains(t, err.Error(), t.Name()+".pde")
 }
@@ -115,6 +129,7 @@ func TestLoadSketchFolderSymlink(t *testing.T) {
 	symlinkSketchPath := filepath.Join("testdata", t.Name())
 	srcSketchPath := t.Name() + "Src"
 	os.Symlink(srcSketchPath, symlinkSketchPath)
+	defer os.Remove(symlinkSketchPath)
 	mainFilePath := filepath.Join(symlinkSketchPath, t.Name()+".ino")
 	s, err := builder.SketchLoad(symlinkSketchPath, "")
 	require.Nil(t, err)
@@ -128,6 +143,11 @@ func TestLoadSketchFolderSymlink(t *testing.T) {
 	require.Equal(t, "header.h", filepath.Base(s.AdditionalFiles[0].Path))
 	require.Equal(t, "s_file.S", filepath.Base(s.AdditionalFiles[1].Path))
 	require.Equal(t, "helper.h", filepath.Base(s.AdditionalFiles[2].Path))
+	require.Len(t, s.RootFolderFiles, 4)
+	require.Equal(t, "header.h", filepath.Base(s.RootFolderFiles[0].Path))
+	require.Equal(t, "old.pde", filepath.Base(s.RootFolderFiles[1].Path))
+	require.Equal(t, "other.ino", filepath.Base(s.RootFolderFiles[2].Path))
+	require.Equal(t, "s_file.S", filepath.Base(s.RootFolderFiles[3].Path))
 
 	// pass the path to the main file
 	symlinkSketchPath = mainFilePath
@@ -142,6 +162,11 @@ func TestLoadSketchFolderSymlink(t *testing.T) {
 	require.Equal(t, "header.h", filepath.Base(s.AdditionalFiles[0].Path))
 	require.Equal(t, "s_file.S", filepath.Base(s.AdditionalFiles[1].Path))
 	require.Equal(t, "helper.h", filepath.Base(s.AdditionalFiles[2].Path))
+	require.Len(t, s.RootFolderFiles, 4)
+	require.Equal(t, "header.h", filepath.Base(s.RootFolderFiles[0].Path))
+	require.Equal(t, "old.pde", filepath.Base(s.RootFolderFiles[1].Path))
+	require.Equal(t, "other.ino", filepath.Base(s.RootFolderFiles[2].Path))
+	require.Equal(t, "s_file.S", filepath.Base(s.RootFolderFiles[3].Path))
 }
 
 func TestLoadSketchFolderIno(t *testing.T) {
@@ -156,7 +181,7 @@ func TestLoadSketchFolderWrongMain(t *testing.T) {
 	sketchPath := filepath.Join("testdata", t.Name())
 	_, err := builder.SketchLoad(sketchPath, "")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unable to find an sketch file in directory testdata")
+	require.Contains(t, err.Error(), "unable to find a sketch file in directory testdata")
 
 	_, err = builder.SketchLoad("does/not/exist", "")
 	require.Error(t, err)
@@ -180,7 +205,8 @@ func TestMergeSketchSources(t *testing.T) {
 		t.Fatalf("unable to read golden file %s: %v", mergedPath, err)
 	}
 
-	offset, source := builder.SketchMergeSources(s)
+	offset, source, err := builder.SketchMergeSources(s, nil)
+	require.Nil(t, err)
 	require.Equal(t, 2, offset)
 	require.Equal(t, string(mergedBytes), source)
 }
@@ -191,7 +217,8 @@ func TestMergeSketchSourcesArduinoIncluded(t *testing.T) {
 	require.NotNil(t, s)
 
 	// ensure not to include Arduino.h when it's already there
-	_, source := builder.SketchMergeSources(s)
+	_, source, err := builder.SketchMergeSources(s, nil)
+	require.Nil(t, err)
 	require.Equal(t, 1, strings.Count(source, "<Arduino.h>"))
 }
 
@@ -205,8 +232,8 @@ func TestCopyAdditionalFiles(t *testing.T) {
 	require.Len(t, s1.AdditionalFiles, 1)
 
 	// copy the sketch over, create a fake main file we don't care about it
-	// but we need it for `SketchLoad` to suceed later
-	err = builder.SketchCopyAdditionalFiles(s1, tmp)
+	// but we need it for `SketchLoad` to succeed later
+	err = builder.SketchCopyAdditionalFiles(s1, tmp, nil)
 	require.Nil(t, err)
 	fakeIno := filepath.Join(tmp, fmt.Sprintf("%s.ino", filepath.Base(tmp)))
 	require.Nil(t, ioutil.WriteFile(fakeIno, []byte{}, os.FileMode(0644)))
@@ -221,10 +248,44 @@ func TestCopyAdditionalFiles(t *testing.T) {
 	require.Nil(t, err)
 
 	// copy again
-	err = builder.SketchCopyAdditionalFiles(s1, tmp)
+	err = builder.SketchCopyAdditionalFiles(s1, tmp, nil)
 	require.Nil(t, err)
 
 	// verify file hasn't changed
 	info2, err := os.Stat(s2.AdditionalFiles[0].Path)
 	require.Equal(t, info1.ModTime(), info2.ModTime())
+}
+
+func TestLoadSketchCaseMismatch(t *testing.T) {
+	// pass the path to the sketch folder
+	sketchPath := filepath.Join("testdata", t.Name())
+	mainFilePath := filepath.Join(sketchPath, t.Name()+".ino")
+	s, err := builder.SketchLoad(sketchPath, "")
+	require.Nil(t, s)
+	require.Error(t, err)
+
+	// pass the path to the main file
+	s, err = builder.SketchLoad(mainFilePath, "")
+	require.Nil(t, s)
+	require.Error(t, err)
+}
+
+func TestSketchWithMarkdownAsciidocJson(t *testing.T) {
+	sketchPath := filepath.Join("testdata", t.Name())
+	mainFilePath := filepath.Join(sketchPath, t.Name()+".ino")
+
+	sketch, err := builder.SketchLoad(sketchPath, "")
+	require.NotNil(t, sketch)
+	require.NoError(t, err)
+	require.Equal(t, sketchPath, sketch.LocationPath)
+	require.Equal(t, mainFilePath, sketch.MainFile.Path)
+	require.Len(t, sketch.OtherSketchFiles, 0)
+	require.Len(t, sketch.AdditionalFiles, 3)
+	require.Equal(t, "foo.adoc", filepath.Base(sketch.AdditionalFiles[0].Path))
+	require.Equal(t, "foo.json", filepath.Base(sketch.AdditionalFiles[1].Path))
+	require.Equal(t, "foo.md", filepath.Base(sketch.AdditionalFiles[2].Path))
+	require.Len(t, sketch.RootFolderFiles, 3)
+	require.Equal(t, "foo.adoc", filepath.Base(sketch.RootFolderFiles[0].Path))
+	require.Equal(t, "foo.json", filepath.Base(sketch.RootFolderFiles[1].Path))
+	require.Equal(t, "foo.md", filepath.Base(sketch.RootFolderFiles[2].Path))
 }

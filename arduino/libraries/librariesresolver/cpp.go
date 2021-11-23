@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package librariesresolver
 
@@ -54,13 +52,11 @@ func (resolver *Cpp) ScanFromLibrariesManager(lm *librariesmanager.LibrariesMana
 
 // ScanLibrary reads a library to find and cache C++ headers for later retrieval
 func (resolver *Cpp) ScanLibrary(lib *libraries.Library) error {
-	cppHeaders, err := lib.SourceDir.ReadDir()
+	cppHeaders, err := lib.SourceHeaders()
 	if err != nil {
-		return fmt.Errorf("reading lib src dir: %s", err)
+		return fmt.Errorf("reading lib headers: %s", err)
 	}
-	cppHeaders.FilterSuffix(".h", ".hpp", ".hh")
-	for _, cppHeaderPath := range cppHeaders {
-		cppHeader := cppHeaderPath.Base()
+	for _, cppHeader := range cppHeaders {
 		l := resolver.headers[cppHeader]
 		l.Add(lib)
 		resolver.headers[cppHeader] = l
@@ -131,17 +127,46 @@ func computePriority(lib *libraries.Library, header, arch string) int {
 	header = simplify(header)
 	name := simplify(lib.Name)
 
-	priority := int(lib.PriorityForArchitecture(arch)) // between 0..255
+	priority := 0
+
+	// Bonus for core-optimized libraries
+	if lib.IsOptimizedForArchitecture(arch) {
+		// give a slightly better bonus for libraries that have specific optimization
+		// (it is more important than Location but less important than Name)
+		priority += 1010
+	} else if lib.IsArchitectureIndependent() {
+		// standard bonus for architecture independent (vanilla) libraries
+		priority += 1000
+	} else {
+		// the library is not architecture compatible
+		priority += 0
+	}
+
 	if name == header {
-		priority += 0x500
+		priority += 500
 	} else if name == header+"-master" {
-		priority += 0x400
+		priority += 400
 	} else if strings.HasPrefix(name, header) {
-		priority += 0x300
+		priority += 300
 	} else if strings.HasSuffix(name, header) {
-		priority += 0x200
+		priority += 200
 	} else if strings.Contains(name, header) {
-		priority += 0x100
+		priority += 100
+	}
+
+	switch lib.Location {
+	case libraries.IDEBuiltIn:
+		priority += 0
+	case libraries.ReferencedPlatformBuiltIn:
+		priority++
+	case libraries.PlatformBuiltIn:
+		priority += 2
+	case libraries.User:
+		priority += 3
+	case libraries.Unmanaged:
+		priority += 4
+	default:
+		panic(fmt.Sprintf("Invalid library location: %d", lib.Location))
 	}
 	return priority
 }

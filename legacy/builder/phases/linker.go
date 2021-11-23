@@ -1,31 +1,17 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package phases
 
@@ -34,16 +20,23 @@ import (
 
 	"github.com/arduino/arduino-cli/legacy/builder/builder_utils"
 	"github.com/arduino/arduino-cli/legacy/builder/constants"
-	"github.com/arduino/arduino-cli/legacy/builder/i18n"
 	"github.com/arduino/arduino-cli/legacy/builder/types"
 	"github.com/arduino/arduino-cli/legacy/builder/utils"
 	"github.com/arduino/go-paths-helper"
 	"github.com/arduino/go-properties-orderedmap"
+	"github.com/pkg/errors"
 )
 
 type Linker struct{}
 
 func (s *Linker) Run(ctx *types.Context) error {
+	if ctx.OnlyUpdateCompilationDatabase {
+		if ctx.Verbose {
+			ctx.GetLogger().Println("info", "Skip linking of final executable.")
+		}
+		return nil
+	}
+
 	objectFilesSketch := ctx.SketchObjectFiles
 	objectFilesLibraries := ctx.LibrariesObjectFiles
 	objectFilesCore := ctx.CoreObjectsFiles
@@ -57,7 +50,7 @@ func (s *Linker) Run(ctx *types.Context) error {
 	buildPath := ctx.BuildPath
 	coreDotARelPath, err := buildPath.RelTo(coreArchiveFilePath)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	buildProperties := ctx.BuildProperties
@@ -72,36 +65,71 @@ func (s *Linker) Run(ctx *types.Context) error {
 
 	err = link(ctx, objectFiles, coreDotARelPath, coreArchiveFilePath, buildProperties)
 	if err != nil {
-		return i18n.WrapError(err)
+		return errors.WithStack(err)
 	}
 
 	return nil
 }
 
 func link(ctx *types.Context, objectFiles paths.PathList, coreDotARelPath *paths.Path, coreArchiveFilePath *paths.Path, buildProperties *properties.Map) error {
-	optRelax := addRelaxTrickIfATMEGA2560(buildProperties)
+	objectFileList := strings.Join(utils.Map(objectFiles.AsStrings(), wrapWithDoubleQuotes), " ")
 
-	quotedObjectFiles := utils.Map(objectFiles.AsStrings(), wrapWithDoubleQuotes)
-	objectFileList := strings.Join(quotedObjectFiles, constants.SPACE)
+	// If command line length is too big (> 30000 chars), try to collect the object files into archives
+	// and use that archives to complete the build.
+	if len(objectFileList) > 30000 {
+
+		// We must create an object file for each visited directory: this is required becuase gcc-ar checks
+		// if an object file is already in the archive by looking ONLY at the filename WITHOUT the path, so
+		// it may happen that a subdir/spi.o inside the archive may be overwritten by a anotherdir/spi.o
+		// because thery are both named spi.o.
+
+		properties := buildProperties.Clone()
+		archives := paths.NewPathList()
+		for _, object := range objectFiles {
+			if object.HasSuffix(".a") {
+				archives.Add(object)
+				continue
+			}
+			archive := object.Parent().Join("objs.a")
+			if !archives.Contains(archive) {
+				archives.Add(archive)
+				// Cleanup old archives
+				_ = archive.Remove()
+			}
+			properties.Set("archive_file", archive.Base())
+			properties.SetPath("archive_file_path", archive)
+			properties.SetPath("object_file", object)
+
+			command, err := builder_utils.PrepareCommandForRecipe(properties, constants.RECIPE_AR_PATTERN, false)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+
+			if _, _, err := utils.ExecCommand(ctx, command, utils.ShowIfVerbose /* stdout */, utils.Show /* stderr */); err != nil {
+				return errors.WithStack(err)
+			}
+		}
+
+		objectFileList = strings.Join(utils.Map(archives.AsStrings(), wrapWithDoubleQuotes), " ")
+		objectFileList = "-Wl,--whole-archive " + objectFileList + " -Wl,--no-whole-archive"
+	}
 
 	properties := buildProperties.Clone()
-	properties.Set(constants.BUILD_PROPERTIES_COMPILER_C_ELF_FLAGS, properties.Get(constants.BUILD_PROPERTIES_COMPILER_C_ELF_FLAGS)+optRelax)
+	properties.Set(constants.BUILD_PROPERTIES_COMPILER_C_ELF_FLAGS, properties.Get(constants.BUILD_PROPERTIES_COMPILER_C_ELF_FLAGS))
 	properties.Set(constants.BUILD_PROPERTIES_COMPILER_WARNING_FLAGS, properties.Get(constants.BUILD_PROPERTIES_COMPILER_WARNING_FLAGS+"."+ctx.WarningsLevel))
 	properties.Set(constants.BUILD_PROPERTIES_ARCHIVE_FILE, coreDotARelPath.String())
 	properties.Set(constants.BUILD_PROPERTIES_ARCHIVE_FILE_PATH, coreArchiveFilePath.String())
-	properties.Set(constants.BUILD_PROPERTIES_OBJECT_FILES, objectFileList)
+	properties.Set("object_files", objectFileList)
 
-	_, _, err := builder_utils.ExecRecipe(ctx, properties, constants.RECIPE_C_COMBINE_PATTERN, false /* stdout */, utils.ShowIfVerbose /* stderr */, utils.Show)
+	command, err := builder_utils.PrepareCommandForRecipe(properties, constants.RECIPE_C_COMBINE_PATTERN, false)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = utils.ExecCommand(ctx, command, utils.ShowIfVerbose /* stdout */, utils.Show /* stderr */)
 	return err
 }
 
 func wrapWithDoubleQuotes(value string) string {
 	return "\"" + value + "\""
-}
-
-func addRelaxTrickIfATMEGA2560(buildProperties *properties.Map) string {
-	if buildProperties.Get(constants.BUILD_PROPERTIES_BUILD_MCU) == "atmega2560" {
-		return ",--relax"
-	}
-	return constants.EMPTY_STRING
 }

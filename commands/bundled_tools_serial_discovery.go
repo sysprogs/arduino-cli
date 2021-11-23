@@ -1,7 +1,6 @@
-//
 // This file is part of arduino-cli.
 //
-// Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -9,11 +8,10 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
-//
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package commands
 
@@ -25,6 +23,7 @@ import (
 
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
+	"github.com/arduino/arduino-cli/arduino/discovery"
 	"github.com/arduino/arduino-cli/arduino/resources"
 	"github.com/arduino/arduino-cli/executils"
 	"github.com/arduino/go-properties-orderedmap"
@@ -33,66 +32,75 @@ import (
 )
 
 var (
-	mutex     = sync.Mutex{}
-	sdVersion = semver.ParseRelaxed("1.0.0")
-	flavors   = []*cores.Flavor{
+	serialDiscoveryVersion = semver.ParseRelaxed("1.2.1")
+	serialDiscoveryFlavors = []*cores.Flavor{
 		{
 			OS: "i686-pc-linux-gnu",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-linux32-v%s.tar.bz2", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-linux32-v%s.tar.bz2", sdVersion),
-				Size:            1469113,
-				Checksum:        "SHA-256:35d96977844ad8d5ca9363e1ae5794450e5f7cf3d29ce7fdfe656b59e7fff725",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Linux_32bit.tar.bz2", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Linux_32bit.tar.gz", serialDiscoveryVersion),
+				Size:            1623562,
+				Checksum:        "SHA-256:624996c2483cd66dc318e9559b9e25754180514a794acd390b4c0de58742d335",
 				CachePath:       "tools",
 			},
 		},
 		{
 			OS: "x86_64-pc-linux-gnu",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-linux64-v%s.tar.bz2", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-linux64-v%s.tar.bz2", sdVersion),
-				Size:            1503971,
-				Checksum:        "SHA-256:1a870d4d823ea6ebec403f63b10a1dbc9c623a6efea5cfa9141fa20045b731e2",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Linux_64bit.tar.bz2", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Linux_64bit.tar.gz", serialDiscoveryVersion),
+				Size:            1679556,
+				Checksum:        "SHA-256:fca394dde79838cdd4cbeaa4a249237c95869c7d39ec5c778ecdc76d227679ef",
 				CachePath:       "tools",
 			},
 		},
 		{
 			OS: "i686-mingw32",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-windows-v%s.zip", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-windows-v%s.zip", sdVersion),
-				Size:            1512379,
-				Checksum:        "SHA-256:b956128ab27a3a883c938d17cad640ba396876472f2ed25d8e661f12f5d0f584",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Windows_32bit.zip", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Windows_32bit.zip", serialDiscoveryVersion),
+				Size:            1735085,
+				Checksum:        "SHA-256:c2d8e92e790862ee3374810121a588c9e8c6e6ff8100112912c05312e04e7570",
+				CachePath:       "tools",
+			},
+		},
+		{
+			OS: "x86_64-mingw32",
+			Resource: &resources.DownloadResource{
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Windows_64bit.zip", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Windows_64bit.zip", serialDiscoveryVersion),
+				Size:            1700849,
+				Checksum:        "SHA-256:4da007d89bb5134e7c44a70d23b026470ee0466912db16254a2a6f431cb7d9a4",
 				CachePath:       "tools",
 			},
 		},
 		{
 			OS: "x86_64-apple-darwin",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-macosx-v%s.tar.bz2", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-macosx-v%s.tar.bz2", sdVersion),
-				Size:            746132,
-				Checksum:        "SHA-256:fcff1b972b70a73cd738facc6d99174d8323293b60c12149c8f6f3084fb2170e",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_macOS_64bit.tar.bz2", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_macOS_64bit.tar.gz", serialDiscoveryVersion),
+				Size:            872913,
+				Checksum:        "SHA-256:c3dfb2d20b1fe839ddfba3567377200d335a93eff19b0a0f553db76d5a7e2dbd",
 				CachePath:       "tools",
 			},
 		},
 		{
 			OS: "arm-linux-gnueabihf",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-linuxarm-v%s.tar.bz2", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-linuxarm-v%s.tar.bz2", sdVersion),
-				Size:            1395174,
-				Checksum:        "SHA-256:f196765caa62d38475208c27b3b516e61427d5d3a8ddc6e863acb4e4a3984701",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Linux_ARMv6.tar.bz2", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Linux_ARMv6.tar.gz", serialDiscoveryVersion),
+				Size:            1560586,
+				Checksum:        "SHA-256:dd1687748c59ba94631f63a1f8ebee7ec21f5f40c01f5b0510f02c72c71d2d66",
 				CachePath:       "tools",
 			},
 		},
 		{
 			OS: "arm64-linux-gnueabihf",
 			Resource: &resources.DownloadResource{
-				ArchiveFileName: fmt.Sprintf("serial-discovery-linuxarm64-v%s.tar.bz2", sdVersion),
-				URL:             fmt.Sprintf("https://downloads.arduino.cc/tools/serial-discovery-linuxarm64-v%s.tar.bz2", sdVersion),
-				Size:            1402706,
-				Checksum:        "SHA-256:c87010ed670254c06ac7abbc4daf7446e4e17f1945a75fc2602dd5930835dd25",
+				ArchiveFileName: fmt.Sprintf("serial-discovery_v%s_Linux_ARM64.tar.bz2", serialDiscoveryVersion),
+				URL:             fmt.Sprintf("https://downloads.arduino.cc/discovery/serial-discovery/serial-discovery_v%s_Linux_ARM64.tar.gz", serialDiscoveryVersion),
+				Size:            1573778,
+				Checksum:        "SHA-256:3f44b5932dcfc2f01a72536d19080e45976d87c0652fcfbe75a87451327faa1f",
 				CachePath:       "tools",
 			},
 		},
@@ -114,12 +122,14 @@ type eventJSON struct {
 	Ports     []*BoardPort `json:"ports"`
 }
 
+var listBoardMutex sync.Mutex
+
 // ListBoards foo
 func ListBoards(pm *packagemanager.PackageManager) ([]*BoardPort, error) {
 	// ensure the connection to the discoverer is unique to avoid messing up
 	// the messages exchanged
-	mutex.Lock()
-	defer mutex.Unlock()
+	listBoardMutex.Lock()
+	defer listBoardMutex.Unlock()
 
 	// get the bundled tool
 	t, err := getBuiltinSerialDiscoveryTool(pm)
@@ -133,8 +143,7 @@ func ListBoards(pm *packagemanager.PackageManager) ([]*BoardPort, error) {
 	}
 
 	// build the command to be executed
-	args := []string{t.InstallDir.Join("serial-discovery").String()}
-	cmd, err := executils.Command(args)
+	cmd, err := executils.NewProcessFromPath(t.InstallDir.Join("serial-discovery"))
 	if err != nil {
 		return nil, errors.Wrap(err, "creating discovery process")
 	}
@@ -189,17 +198,44 @@ func ListBoards(pm *packagemanager.PackageManager) ([]*BoardPort, error) {
 	out.Close()
 	// kill the process if it takes too long to quit
 	time.AfterFunc(time.Second, func() {
-		cmd.Process.Kill()
+		cmd.Kill()
 	})
 	cmd.Wait()
 
 	return retVal, finalError
 }
 
+// WatchListBoards returns a channel that receives events from the bundled discovery tool
+func WatchListBoards(pm *packagemanager.PackageManager) (<-chan *discovery.Event, error) {
+	t, err := getBuiltinSerialDiscoveryTool(pm)
+	if err != nil {
+		return nil, err
+	}
+
+	if !t.IsInstalled() {
+		return nil, fmt.Errorf("missing serial-discovery tool")
+	}
+
+	disc, err := discovery.New("serial-discovery", t.InstallDir.Join(t.Tool.Name).String())
+	if err != nil {
+		return nil, err
+	}
+
+	if err = disc.Start(); err != nil {
+		return nil, fmt.Errorf("starting discovery: %v", err)
+	}
+
+	if err = disc.StartSync(); err != nil {
+		return nil, fmt.Errorf("starting sync: %v", err)
+	}
+
+	return disc.EventChannel(10), nil
+}
+
 func getBuiltinSerialDiscoveryTool(pm *packagemanager.PackageManager) (*cores.ToolRelease, error) {
 	builtinPackage := pm.Packages.GetOrCreatePackage("builtin")
-	ctagsTool := builtinPackage.GetOrCreateTool("serial-discovery")
-	ctagsRel := ctagsTool.GetOrCreateRelease(sdVersion)
-	ctagsRel.Flavors = flavors
-	return pm.Package("builtin").Tool("serial-discovery").Release(sdVersion).Get()
+	serialDiscoveryTool := builtinPackage.GetOrCreateTool("serial-discovery")
+	serialDiscoveryToolRel := serialDiscoveryTool.GetOrCreateRelease(serialDiscoveryVersion)
+	serialDiscoveryToolRel.Flavors = serialDiscoveryFlavors
+	return pm.Package("builtin").Tool("serial-discovery").Release(serialDiscoveryVersion).Get()
 }

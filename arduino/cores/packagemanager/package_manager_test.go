@@ -1,30 +1,29 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package packagemanager_test
 
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
 	"github.com/arduino/arduino-cli/arduino/cores/packagemanager"
-	"github.com/arduino/arduino-cli/configs"
+	"github.com/arduino/arduino-cli/configuration"
 	"github.com/arduino/go-paths-helper"
 	"github.com/arduino/go-properties-orderedmap"
 	"github.com/stretchr/testify/require"
@@ -212,14 +211,15 @@ func TestBoardOptionsFunctions(t *testing.T) {
 }
 
 func TestFindToolsRequiredForBoard(t *testing.T) {
+	os.Setenv("ARDUINO_DATA_DIR", dataDir1.String())
+	configuration.Settings = configuration.Init("")
 	pm := packagemanager.NewPackageManager(
 		dataDir1,
-		dataDir1.Join("packages"),
-		dataDir1.Join("staging"),
-		dataDir1)
-	conf := &configs.Configuration{
-		DataDir: dataDir1,
-	}
+		configuration.PackagesDir(configuration.Settings),
+		paths.New(configuration.Settings.GetString("directories.Downloads")),
+		dataDir1,
+	)
+
 	loadIndex := func(addr string) {
 		res, err := url.Parse(addr)
 		require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestFindToolsRequiredForBoard(t *testing.T) {
 	loadIndex("https://dl.espressif.com/dl/package_esp32_index.json")
 	loadIndex("http://arduino.esp8266.com/stable/package_esp8266com_index.json")
 	loadIndex("https://adafruit.github.io/arduino-board-index/package_adafruit_index.json")
-	require.NoError(t, pm.LoadHardware(conf))
+	require.NoError(t, pm.LoadHardware())
 	esp32, err := pm.FindBoardWithFQBN("esp32:esp32:esp32")
 	require.NoError(t, err)
 	esptool231 := pm.FindToolDependency(&cores.ToolDependency{
@@ -315,4 +315,7 @@ func TestIdentifyBoard(t *testing.T) {
 	require.Equal(t, "[test:avr:c]", fmt.Sprintf("%v", identify("0x9999", "0x0004")))
 	// https://github.com/arduino/arduino-cli/issues/456
 	require.Equal(t, "[test:avr:d]", fmt.Sprintf("%v", identify("0x9999", "0x0005")))
+	// Check mixed case
+	require.Equal(t, "[test:avr:e]", fmt.Sprintf("%v", identify("0xAB00", "0xcd00")))
+	require.Equal(t, "[test:avr:e]", fmt.Sprintf("%v", identify("0xab00", "0xCD00")))
 }

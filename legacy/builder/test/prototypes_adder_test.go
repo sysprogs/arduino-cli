@@ -1,32 +1,18 @@
-/*
- * This file is part of Arduino Builder.
- *
- * Arduino Builder is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- * As a special exception, you may use this file as part of a free software
- * library without restriction.  Specifically, if other files instantiate
- * templates or use macros or inline functions from this file, or you compile
- * this file and link it with other files to produce an executable, this
- * file does not by itself cause the resulting executable to be covered by
- * the GNU General Public License.  This exception does not however
- * invalidate any other reasons why the executable file might be covered by
- * the GNU General Public License.
- *
- * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
- * Copyright 2015 Matthijs Kooijman
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2015 Matthijs Kooijman
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package test
 
@@ -49,7 +35,7 @@ func TestPrototypesAdderBridgeExample(t *testing.T) {
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -91,11 +77,11 @@ func TestPrototypesAdderSketchWithIfDef(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch2", "SketchWithIfDef.ino"),
+		SketchLocation:       paths.New("SketchWithIfDef", "SketchWithIfDef.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -123,7 +109,7 @@ func TestPrototypesAdderSketchWithIfDef(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch2", "SketchWithIfDef.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("SketchWithIfDef", "SketchWithIfDef.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -131,11 +117,11 @@ func TestPrototypesAdderBaladuino(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch3", "Baladuino.ino"),
+		SketchLocation:       paths.New("Baladuino", "Baladuino.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -163,7 +149,7 @@ func TestPrototypesAdderBaladuino(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch3", "Baladuino.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("Baladuino", "Baladuino.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -171,11 +157,11 @@ func TestPrototypesAdderCharWithEscapedDoubleQuote(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch4", "CharWithEscapedDoubleQuote.ino"),
+		SketchLocation:       paths.New("CharWithEscapedDoubleQuote", "CharWithEscapedDoubleQuote.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -203,7 +189,7 @@ func TestPrototypesAdderCharWithEscapedDoubleQuote(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch4", "CharWithEscapedDoubleQuote.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("CharWithEscapedDoubleQuote", "CharWithEscapedDoubleQuote.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -211,11 +197,11 @@ func TestPrototypesAdderIncludeBetweenMultilineComment(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch5", "IncludeBetweenMultilineComment.ino"),
+		SketchLocation:       paths.New("IncludeBetweenMultilineComment", "IncludeBetweenMultilineComment.ino"),
 		FQBN:                 parseFQBN(t, "arduino:sam:arduino_due_x_dbg"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -243,7 +229,7 @@ func TestPrototypesAdderIncludeBetweenMultilineComment(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch5", "IncludeBetweenMultilineComment.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("IncludeBetweenMultilineComment", "IncludeBetweenMultilineComment.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -251,11 +237,11 @@ func TestPrototypesAdderLineContinuations(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch6", "/LineContinuations.ino"),
+		SketchLocation:       paths.New("LineContinuations", "LineContinuations.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -283,7 +269,7 @@ func TestPrototypesAdderLineContinuations(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch6", "LineContinuations.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("LineContinuations", "LineContinuations.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -291,11 +277,11 @@ func TestPrototypesAdderStringWithComment(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch7", "StringWithComment.ino"),
+		SketchLocation:       paths.New("StringWithComment", "StringWithComment.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -323,7 +309,7 @@ func TestPrototypesAdderStringWithComment(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch7", "StringWithComment.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("StringWithComment", "StringWithComment.preprocessed.txt"), ctx)
 	require.Equal(t, preprocessed, strings.Replace(ctx.Source, "\r\n", "\n", -1))
 }
 
@@ -331,11 +317,11 @@ func TestPrototypesAdderSketchWithStruct(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch8", "SketchWithStruct.ino"),
+		SketchLocation:       paths.New("SketchWithStruct", "SketchWithStruct.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -363,7 +349,7 @@ func TestPrototypesAdderSketchWithStruct(t *testing.T) {
 		NoError(t, err)
 	}
 
-	preprocessed := LoadAndInterpolate(t, filepath.Join("sketch8", "SketchWithStruct.preprocessed.txt"), ctx)
+	preprocessed := LoadAndInterpolate(t, filepath.Join("SketchWithStruct", "SketchWithStruct.preprocessed.txt"), ctx)
 	obtained := strings.Replace(ctx.Source, "\r\n", "\n", -1)
 	// ctags based preprocessing removes the space after "dostuff", but this is still OK
 	// TODO: remove this exception when moving to a more powerful parser
@@ -379,7 +365,7 @@ func TestPrototypesAdderSketchWithConfig(t *testing.T) {
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -421,15 +407,15 @@ func TestPrototypesAdderSketchWithConfig(t *testing.T) {
 func TestPrototypesAdderSketchNoFunctionsTwoFiles(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_no_functions_two_files", "main.ino")
+	sketchLocation := paths.New("sketch_no_functions_two_files", "sketch_no_functions_two_files.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch_no_functions_two_files", "main.ino"),
+		SketchLocation:       paths.New("sketch_no_functions_two_files", "sketch_no_functions_two_files.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -465,11 +451,11 @@ func TestPrototypesAdderSketchNoFunctions(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("sketch_no_functions", "main.ino"),
+		SketchLocation:       paths.New("sketch_no_functions", "sketch_no_functions.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:leonardo"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -478,7 +464,7 @@ func TestPrototypesAdderSketchNoFunctions(t *testing.T) {
 	buildPath := SetupBuildPath(t, ctx)
 	defer buildPath.RemoveAll()
 
-	sketchLocation := paths.New("sketch_no_functions", "main.ino")
+	sketchLocation := paths.New("sketch_no_functions", "sketch_no_functions.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	commands := []types.Command{
@@ -507,11 +493,11 @@ func TestPrototypesAdderSketchNoFunctions(t *testing.T) {
 func TestPrototypesAdderSketchWithDefaultArgs(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_default_args", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_default_args", "sketch_with_default_args.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -550,11 +536,11 @@ func TestPrototypesAdderSketchWithDefaultArgs(t *testing.T) {
 func TestPrototypesAdderSketchWithInlineFunction(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_inline_function", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_inline_function", "sketch_with_inline_function.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -604,11 +590,11 @@ func TestPrototypesAdderSketchWithInlineFunction(t *testing.T) {
 func TestPrototypesAdderSketchWithFunctionSignatureInsideIFDEF(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_function_signature_inside_ifdef", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_function_signature_inside_ifdef", "sketch_with_function_signature_inside_ifdef.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -647,11 +633,11 @@ func TestPrototypesAdderSketchWithFunctionSignatureInsideIFDEF(t *testing.T) {
 func TestPrototypesAdderSketchWithUSBCON(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_usbcon", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_usbcon", "sketch_with_usbcon.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
@@ -690,11 +676,11 @@ func TestPrototypesAdderSketchWithUSBCON(t *testing.T) {
 func TestPrototypesAdderSketchWithTypename(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_typename", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_typename", "sketch_with_typename.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInLibrariesDirs: paths.NewPathList("libraries", "downloaded_libraries"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		SketchLocation:       sketchLocation,
@@ -738,11 +724,11 @@ func TestPrototypesAdderSketchWithTypename(t *testing.T) {
 func TestPrototypesAdderSketchWithIfDef2(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_ifdef", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_ifdef", "sketch_with_ifdef.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -784,11 +770,11 @@ func TestPrototypesAdderSketchWithIfDef2(t *testing.T) {
 func TestPrototypesAdderSketchWithIfDef2SAM(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_ifdef", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_ifdef", "sketch_with_ifdef.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -830,11 +816,11 @@ func TestPrototypesAdderSketchWithIfDef2SAM(t *testing.T) {
 func TestPrototypesAdderSketchWithConst(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
-	sketchLocation := paths.New("sketch_with_const", "sketch.ino")
+	sketchLocation := paths.New("sketch_with_const", "sketch_with_const.ino")
 	quotedSketchLocation := utils.QuoteCppPath(Abs(t, sketchLocation))
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
@@ -874,11 +860,11 @@ func TestPrototypesAdderSketchWithDosEol(t *testing.T) {
 	DownloadCoresAndToolsAndLibraries(t)
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),
-		SketchLocation:       paths.New("eol_processing", "sketch.ino"),
+		SketchLocation:       paths.New("eol_processing", "eol_processing.ino"),
 		FQBN:                 parseFQBN(t, "arduino:avr:uno"),
 		ArduinoAPIVersion:    "10600",
 		Verbose:              true,
@@ -914,7 +900,7 @@ func TestPrototypesAdderSketchWithSubstringFunctionMember(t *testing.T) {
 	quotedSketchLocation := utils.QuoteCppString(Abs(t, sketchLocation).String())
 
 	ctx := &types.Context{
-		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "hardware", "downloaded_hardware"),
+		HardwareDirs:         paths.NewPathList(filepath.Join("..", "hardware"), "downloaded_hardware"),
 		BuiltInToolsDirs:     paths.NewPathList("downloaded_tools"),
 		BuiltInLibrariesDirs: paths.NewPathList("downloaded_libraries"),
 		OtherLibrariesDirs:   paths.NewPathList("libraries"),

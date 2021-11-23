@@ -1,6 +1,6 @@
 // This file is part of arduino-cli.
 //
-// Copyright 2019 ARDUINO SA (http://www.arduino.cc/)
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
 //
 // This software is released under the GNU General Public License version 3,
 // which covers the main part of arduino-cli.
@@ -8,10 +8,10 @@
 // https://www.gnu.org/licenses/gpl-3.0.en.html
 //
 // You can be released from the requirements of the above licenses by purchasing
-// a commercial license. Buying such a license is mandatory if you want to modify or
-// otherwise use the software for commercial activities involving the Arduino
-// software without disclosing the source code of your own applications. To purchase
-// a commercial license, send an email to license@arduino.cc.
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package builder
 
@@ -47,9 +47,9 @@ func QuoteCppString(str string) string {
 }
 
 // SketchSaveItemCpp saves a preprocessed .cpp sketch file on disk
-func SketchSaveItemCpp(item *sketch.Item, destPath string) error {
+func SketchSaveItemCpp(path string, contents []byte, destPath string) error {
 
-	sketchName := filepath.Base(item.Path)
+	sketchName := filepath.Base(path)
 
 	if err := os.MkdirAll(destPath, os.FileMode(0755)); err != nil {
 		return errors.Wrap(err, "unable to create a folder to save the sketch")
@@ -57,7 +57,7 @@ func SketchSaveItemCpp(item *sketch.Item, destPath string) error {
 
 	destFile := filepath.Join(destPath, sketchName+".cpp")
 
-	if err := ioutil.WriteFile(destFile, item.Source, os.FileMode(0644)); err != nil {
+	if err := ioutil.WriteFile(destFile, contents, os.FileMode(0644)); err != nil {
 		return errors.Wrap(err, "unable to save the sketch on disk")
 	}
 
@@ -112,29 +112,31 @@ func SketchLoad(sketchPath, buildPath string) (*sketch.Sketch, error) {
 	if stat.IsDir() {
 		sketchFolder = sketchPath
 		// allowed extensions are .ino and .pde (but not both)
-		allowedSketchExtensions := [...]string{".ino", ".pde"}
-		for _, extension := range allowedSketchExtensions {
+		for extension := range globals.MainFileValidExtensions {
 			candidateSketchFile := filepath.Join(sketchPath, stat.Name()+extension)
 			if _, err := os.Stat(candidateSketchFile); !os.IsNotExist(err) {
 				if mainSketchFile == "" {
 					mainSketchFile = candidateSketchFile
 				} else {
-					return nil, errors.Errorf("more than one main sketch file found (%v,%v)",
+					return nil, errors.Errorf("multiple main sketch files found (%v,%v)",
 						filepath.Base(mainSketchFile),
 						filepath.Base(candidateSketchFile))
 				}
 			}
 		}
-		// check that .pde or .ino was found
+
+		// check main file was found
 		if mainSketchFile == "" {
-			return nil, errors.Errorf("unable to find an sketch file in directory %v", sketchFolder)
+			return nil, errors.Errorf("unable to find a sketch file in directory %v", sketchFolder)
 		}
-		// in the case a dir was passed, ensure the main file exists and is readable
+
+		// check main file is readable
 		f, err := os.Open(mainSketchFile)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to open the main sketch file")
 		}
 		f.Close()
+
 		// ensure it is not a directory
 		info, err := os.Stat(mainSketchFile)
 		if err != nil {
@@ -150,33 +152,42 @@ func SketchLoad(sketchPath, buildPath string) (*sketch.Sketch, error) {
 
 	// collect all the sketch files
 	var files []string
+	rootVisited := false
 	err = simpleLocalWalk(sketchFolder, maxFileSystemDepth, func(path string, info os.FileInfo, err error) error {
-
 		if err != nil {
 			feedback.Errorf("Error during sketch processing: %v", err)
 			os.Exit(errorcodes.ErrGeneric)
 		}
 
-		// ignore hidden files and skip hidden directories
-		if strings.HasPrefix(info.Name(), ".") {
-			if info.IsDir() {
-				return filepath.SkipDir
+		if info.IsDir() {
+			// Filters in this if-block are NOT applied to the sketch folder itself.
+			// Since the sketch folder is the first one processed by simpleLocalWalk,
+			// we can set the `rootVisited` guard to exclude it.
+			if rootVisited {
+				// skip hidden folders
+				if strings.HasPrefix(info.Name(), ".") {
+					return filepath.SkipDir
+				}
+
+				// skip legacy SCM directories
+				if info.Name() == "CVS" || info.Name() == "RCS" {
+					return filepath.SkipDir
+				}
+			} else {
+				rootVisited = true
 			}
+
+			// ignore (don't skip) directory
 			return nil
 		}
 
-		// skip legacy SCM directories
-		if info.IsDir() && strings.HasPrefix(info.Name(), "CVS") || strings.HasPrefix(info.Name(), "RCS") {
-			return filepath.SkipDir
-		}
-
-		// ignore directory entries
-		if info.IsDir() {
+		// ignore hidden files
+		if strings.HasPrefix(info.Name(), ".") {
 			return nil
 		}
 
 		// ignore if file extension doesn't match
-		ext := strings.ToLower(filepath.Ext(path))
+		ext := filepath.Ext(path)
 		_, isMain := globals.MainFileValidExtensions[ext]
 		_, isAdditional := globals.AdditionalFileValidExtensions[ext]
 		if !(isMain || isAdditional) {
@@ -205,31 +216,50 @@ func SketchLoad(sketchPath, buildPath string) (*sketch.Sketch, error) {
 }
 
 // SketchMergeSources merges all the source files included in a sketch
-func SketchMergeSources(sketch *sketch.Sketch) (int, string) {
+func SketchMergeSources(sk *sketch.Sketch, overrides map[string]string) (int, string, error) {
 	lineOffset := 0
 	mergedSource := ""
 
+	getSource := func(i *sketch.Item) (string, error) {
+		path, err := filepath.Rel(sk.LocationPath, i.Path)
+		if err != nil {
+			return "", errors.Wrap(err, "unable to compute relative path to the sketch for the item")
+		}
+		if override, ok := overrides[path]; ok {
+			return override, nil
+		}
+		return i.GetSourceStr()
+	}
+
 	// add Arduino.h inclusion directive if missing
-	if !includesArduinoH.MatchString(sketch.MainFile.GetSourceStr()) {
+	mainSrc, err := getSource(sk.MainFile)
+	if err != nil {
+		return 0, "", err
+	}
+	if !includesArduinoH.MatchString(mainSrc) {
 		mergedSource += "#include <Arduino.h>\n"
 		lineOffset++
 	}
 
-	mergedSource += "#line 1 " + QuoteCppString(sketch.MainFile.Path) + "\n"
-	mergedSource += sketch.MainFile.GetSourceStr() + "\n"
+	mergedSource += "#line 1 " + QuoteCppString(sk.MainFile.Path) + "\n"
+	mergedSource += mainSrc + "\n"
 	lineOffset++
 
-	for _, item := range sketch.OtherSketchFiles {
+	for _, item := range sk.OtherSketchFiles {
+		src, err := getSource(item)
+		if err != nil {
+			return 0, "", err
+		}
 		mergedSource += "#line 1 " + QuoteCppString(item.Path) + "\n"
-		mergedSource += item.GetSourceStr() + "\n"
+		mergedSource += src + "\n"
 	}
 
-	return lineOffset, mergedSource
+	return lineOffset, mergedSource, nil
 }
 
 // SketchCopyAdditionalFiles copies the additional files for a sketch to the
 // specified destination directory.
-func SketchCopyAdditionalFiles(sketch *sketch.Sketch, destPath string) error {
+func SketchCopyAdditionalFiles(sketch *sketch.Sketch, destPath string, overrides map[string]string) error {
 	if err := os.MkdirAll(destPath, os.FileMode(0755)); err != nil {
 		return errors.Wrap(err, "unable to create a folder to save the sketch files")
 	}
@@ -246,7 +276,23 @@ func SketchCopyAdditionalFiles(sketch *sketch.Sketch, destPath string) error {
 			return errors.Wrap(err, "unable to create the folder containing the item")
 		}
 
-		err = writeIfDifferent(item.Path, targetPath)
+		var sourceBytes []byte
+		if override, ok := overrides[relpath]; ok {
+			// use override source
+			sourceBytes = []byte(override)
+		} else {
+			// read the source file
+			s, err := item.GetSourceBytes()
+			if err != nil {
+				return errors.Wrap(err, "unable to read contents of the source item")
+			}
+			sourceBytes = s
+		}
+
+		// tag each addtional file with the filename of the source it was copied from
+		sourceBytes = append([]byte("#line 1 "+QuoteCppString(item.Path)+"\n"), sourceBytes...)
+
+		err = writeIfDifferent(sourceBytes, targetPath)
 		if err != nil {
 			return errors.Wrap(err, "unable to write to destination file")
 		}
@@ -255,18 +301,12 @@ func SketchCopyAdditionalFiles(sketch *sketch.Sketch, destPath string) error {
 	return nil
 }
 
-func writeIfDifferent(sourcePath, destPath string) error {
-	// read the source file
-	newbytes, err := ioutil.ReadFile(sourcePath)
-	if err != nil {
-		return errors.Wrap(err, "unable to read contents of the source item")
-	}
-
+func writeIfDifferent(source []byte, destPath string) error {
 	// check whether the destination file exists
-	_, err = os.Stat(destPath)
+	_, err := os.Stat(destPath)
 	if os.IsNotExist(err) {
 		// write directly
-		return ioutil.WriteFile(destPath, newbytes, os.FileMode(0644))
+		return ioutil.WriteFile(destPath, source, os.FileMode(0644))
 	}
 
 	// read the destination file if it ex
@@ -276,8 +316,8 @@ func writeIfDifferent(sourcePath, destPath string) error {
 	}
 
 	// overwrite if contents are different
-	if bytes.Compare(existingBytes, newbytes) != 0 {
-		return ioutil.WriteFile(destPath, newbytes, os.FileMode(0644))
+	if bytes.Compare(existingBytes, source) != 0 {
+		return ioutil.WriteFile(destPath, source, os.FileMode(0644))
 	}
 
 	// source and destination are the same, don't write anything

@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package librariesresolver
 
@@ -24,13 +22,72 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var l1 = &libraries.Library{Name: "Calculus Lib", Location: libraries.Sketchbook}
-var l2 = &libraries.Library{Name: "Calculus Lib-master", Location: libraries.Sketchbook}
-var l3 = &libraries.Library{Name: "Calculus Lib Improved", Location: libraries.Sketchbook}
-var l4 = &libraries.Library{Name: "Another Calculus Lib", Location: libraries.Sketchbook}
-var l5 = &libraries.Library{Name: "Yet Another Calculus Lib Improved", Location: libraries.Sketchbook}
-var l6 = &libraries.Library{Name: "Calculus Unified Lib", Location: libraries.Sketchbook}
-var l7 = &libraries.Library{Name: "AnotherLib", Location: libraries.Sketchbook}
+var l1 = &libraries.Library{Name: "Calculus Lib", Location: libraries.User}
+var l2 = &libraries.Library{Name: "Calculus Lib-master", Location: libraries.User}
+var l3 = &libraries.Library{Name: "Calculus Lib Improved", Location: libraries.User}
+var l4 = &libraries.Library{Name: "Another Calculus Lib", Location: libraries.User}
+var l5 = &libraries.Library{Name: "Yet Another Calculus Lib Improved", Location: libraries.User}
+var l6 = &libraries.Library{Name: "Calculus Unified Lib", Location: libraries.User}
+var l7 = &libraries.Library{Name: "AnotherLib", Location: libraries.User}
+var bundleServo = &libraries.Library{Name: "Servo", Location: libraries.IDEBuiltIn, Architectures: []string{"avr", "sam", "samd"}}
+
+func runResolver(include string, arch string, libs ...*libraries.Library) *libraries.Library {
+	libraryList := libraries.List{}
+	libraryList.Add(libs...)
+	resolver := NewCppResolver()
+	resolver.headers[include] = libraryList
+	return resolver.ResolveFor(include, arch)
+}
+
+func TestArchitecturePriority(t *testing.T) {
+	userServo := &libraries.Library{
+		Name:          "Servo",
+		Location:      libraries.User,
+		Architectures: []string{"avr", "sam", "samd"}}
+	userServoAllArch := &libraries.Library{
+		Name:          "Servo",
+		Location:      libraries.User,
+		Architectures: []string{"*"}}
+	userServoNonavr := &libraries.Library{
+		Name:          "Servo",
+		Location:      libraries.User,
+		Architectures: []string{"sam", "samd"}}
+	userAnotherServo := &libraries.Library{
+		Name:          "AnotherServo",
+		Location:      libraries.User,
+		Architectures: []string{"avr", "sam", "samd", "esp32"}}
+
+	res := runResolver("Servo.h", "avr", bundleServo, userServo)
+	require.NotNil(t, res)
+	require.Equal(t, userServo, res, "selected library")
+
+	res = runResolver("Servo.h", "avr", bundleServo, userServoNonavr)
+	require.NotNil(t, res)
+	require.Equal(t, bundleServo, res, "selected library")
+
+	res = runResolver("Servo.h", "avr", bundleServo, userAnotherServo)
+	require.NotNil(t, res)
+	require.Equal(t, bundleServo, res, "selected library")
+
+	res = runResolver("Servo.h", "esp32", bundleServo, userAnotherServo)
+	require.NotNil(t, res)
+	require.Equal(t, userAnotherServo, res, "selected library")
+
+	res = runResolver("Servo.h", "esp32", userServoAllArch, userAnotherServo)
+	require.NotNil(t, res)
+	require.Equal(t, userServoAllArch, res, "selected library")
+
+	userSDAllArch := &libraries.Library{
+		Name:          "SD",
+		Location:      libraries.User,
+		Architectures: []string{"*"}}
+	builtinSDesp := &libraries.Library{
+		Name:          "SD",
+		Location:      libraries.PlatformBuiltIn,
+		Architectures: []string{"esp8266"}}
+	res = runResolver("SD.h", "esp8266", userSDAllArch, builtinSDesp)
+	require.Equal(t, builtinSDesp, res, "selected library")
+}
 
 func TestClosestMatchWithTotallyDifferentNames(t *testing.T) {
 	libraryList := libraries.List{}

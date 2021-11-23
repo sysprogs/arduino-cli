@@ -1,25 +1,22 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package executils
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os/exec"
 )
@@ -72,16 +69,4 @@ func call(stack []*exec.Cmd, pipes []*io.PipeWriter) (err error) {
 // command prompt while runnning on Windows. It has no effects on other OS.
 func TellCommandNotToSpawnShell(cmd *exec.Cmd) {
 	tellCommandNotToSpawnShell(cmd)
-}
-
-// Command creates a command with the provided command line arguments.
-// The first argument is the path to the executable, the remainder are the
-// arguments to the command.
-func Command(args []string) (*exec.Cmd, error) {
-	if args == nil || len(args) == 0 {
-		return nil, fmt.Errorf("no executable specified")
-	}
-	cmd := exec.Command(args[0], args[1:]...)
-	TellCommandNotToSpawnShell(cmd)
-	return cmd, nil
 }

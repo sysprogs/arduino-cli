@@ -1,19 +1,17 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package libraries
 
@@ -21,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
+	rpc "github.com/arduino/arduino-cli/rpc/cc/arduino/cli/commands/v1"
 	paths "github.com/arduino/go-paths-helper"
 	properties "github.com/arduino/go-properties-orderedmap"
 	semver "go.bug.st/relaxed-semver"
@@ -59,20 +58,25 @@ type Library struct {
 
 	Types []string `json:"types,omitempty"`
 
-	InstallDir        *paths.Path
-	SourceDir         *paths.Path
-	UtilityDir        *paths.Path
-	Location          LibraryLocation
-	ContainerPlatform *cores.PlatformRelease `json:""`
-	Layout            LibraryLayout
-	RealName          string
-	DotALinkage       bool
-	Precompiled       bool
-	LDflags           string
-	IsLegacy          bool
-	Version           *semver.Version
-	License           string
-	Properties        *properties.Map
+	InstallDir             *paths.Path
+	SourceDir              *paths.Path
+	UtilityDir             *paths.Path
+	Location               LibraryLocation
+	ContainerPlatform      *cores.PlatformRelease `json:""`
+	Layout                 LibraryLayout
+	RealName               string
+	DotALinkage            bool
+	Precompiled            bool
+	PrecompiledWithSources bool
+	LDflags                string
+	IsLegacy               bool
+	Version                *semver.Version
+	License                string
+	Properties             *properties.Map
+	Examples               paths.PathList
+	declaredHeaders        []string
+	sourceHeaders          []string
+	CompatibleWith         map[string]bool
 }
 
 func (library *Library) String() string {
@@ -82,14 +86,66 @@ func (library *Library) String() string {
 	return library.Name + "@" + library.Version.String()
 }
 
+// ToRPCLibrary converts this library into an rpc.Library
+func (library *Library) ToRPCLibrary() (*rpc.Library, error) {
+	pathOrEmpty := func(p *paths.Path) string {
+		if p == nil {
+			return ""
+		}
+		return p.String()
+	}
+	platformOrEmpty := func(p *cores.PlatformRelease) string {
+		if p == nil {
+			return ""
+		}
+		return p.String()
+	}
+
+	// If the the "includes" property is empty or not included in the "library.properties" file
+	// we search for headers by reading the library files directly
+	headers := library.DeclaredHeaders()
+	if len(headers) == 0 {
+		var err error
+		headers, err = library.SourceHeaders()
+		if err != nil {
+			return nil, fmt.Errorf("gathering library headers: %w", err)
+		}
+	}
+
+	return &rpc.Library{
+		Name:              library.Name,
+		Author:            library.Author,
+		Maintainer:        library.Maintainer,
+		Sentence:          library.Sentence,
+		Paragraph:         library.Paragraph,
+		Website:           library.Website,
+		Category:          library.Category,
+		Architectures:     library.Architectures,
+		Types:             library.Types,
+		InstallDir:        pathOrEmpty(library.InstallDir),
+		SourceDir:         pathOrEmpty(library.SourceDir),
+		UtilityDir:        pathOrEmpty(library.UtilityDir),
+		Location:          library.Location.ToRPCLibraryLocation(),
+		ContainerPlatform: platformOrEmpty(library.ContainerPlatform),
+		Layout:            library.Layout.ToRPCLibraryLayout(),
+		RealName:          library.RealName,
+		DotALinkage:       library.DotALinkage,
+		Precompiled:       library.Precompiled,
+		LdFlags:           library.LDflags,
+		IsLegacy:          library.IsLegacy,
+		Version:           library.Version.String(),
+		License:           library.License,
+		Examples:          library.Examples.AsStrings(),
+		ProvidesIncludes:  headers,
+		CompatibleWith:    library.CompatibleWith,
+	}, nil
+}
+
 // SupportsAnyArchitectureIn returns true if any of the following is true:
 // - the library supports at least one of the given architectures
 // - the library is architecture independent
 // - the library doesn't specify any `architecture` field in library.properties
 func (library *Library) SupportsAnyArchitectureIn(archs ...string) bool {
-	if len(library.Architectures) == 0 {
-		return true
-	}
 	if library.IsArchitectureIndependent() {
 		return true
 	}
@@ -117,34 +173,7 @@ func (library *Library) IsOptimizedForArchitecture(arch string) bool {
 // compatible with all architectures (the `architecture` field in
 // library.properties contains the `*` item)
 func (library *Library) IsArchitectureIndependent() bool {
-	return library.IsOptimizedForArchitecture("*")
-}
-
-// PriorityForArchitecture returns an integer that represents the
-// priority this lib has for the specified architecture based on
-// his location and the architectures directly supported (as exposed
-// on the `architecture` field of the `library.properties`)
-// This function returns an integer between 0 and 255, higher means
-// higher priority.
-func (library *Library) PriorityForArchitecture(arch string) uint8 {
-	bonus := uint8(0)
-
-	// Bonus for core-optimized libraries
-	if library.IsOptimizedForArchitecture(arch) {
-		bonus = 0x10
-	}
-
-	switch library.Location {
-	case IDEBuiltIn:
-		return bonus + 0x00
-	case ReferencedPlatformBuiltIn:
-		return bonus + 0x01
-	case PlatformBuiltIn:
-		return bonus + 0x02
-	case Sketchbook:
-		return bonus + 0x03
-	}
-	panic(fmt.Sprintf("Invalid library location: %d", library.Location))
+	return library.IsOptimizedForArchitecture("*") || library.Architectures == nil || len(library.Architectures) == 0
 }
 
 // SourceDir represents a source dir of a library
@@ -169,4 +198,44 @@ func (library *Library) SourceDirs() []SourceDir {
 			})
 	}
 	return dirs
+}
+
+// LocationPriorityFor returns a number representing the location priority for the given library
+// using the given platform and referenced-platform. Higher value means higher priority.
+func (library *Library) LocationPriorityFor(platformRelease, refPlatformRelease *cores.PlatformRelease) int {
+	if library.Location == IDEBuiltIn {
+		return 1
+	} else if library.ContainerPlatform == refPlatformRelease {
+		return 2
+	} else if library.ContainerPlatform == platformRelease {
+		return 3
+	} else if library.Location == User {
+		return 4
+	}
+	return 0
+}
+
+// DeclaredHeaders returns the C++ headers that the library declares in library.properties
+func (library *Library) DeclaredHeaders() []string {
+	if library.declaredHeaders == nil {
+		library.declaredHeaders = []string{}
+	}
+	return library.declaredHeaders
+}
+
+// SourceHeaders returns all the C++ headers in the library even if not declared in library.properties
+func (library *Library) SourceHeaders() ([]string, error) {
+	if library.sourceHeaders == nil {
+		cppHeaders, err := library.SourceDir.ReadDir()
+		if err != nil {
+			return nil, fmt.Errorf("reading lib src dir: %s", err)
+		}
+		cppHeaders.FilterSuffix(".h", ".hpp", ".hh")
+		res := []string{}
+		for _, cppHeader := range cppHeaders {
+			res = append(res, cppHeader.Base())
+		}
+		library.sourceHeaders = res
+	}
+	return library.sourceHeaders, nil
 }

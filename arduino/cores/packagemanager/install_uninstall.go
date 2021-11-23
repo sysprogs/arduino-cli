@@ -1,26 +1,29 @@
-/*
- * This file is part of arduino-cli.
- *
- * Copyright 2018 ARDUINO SA (http://www.arduino.cc/)
- *
- * This software is released under the GNU General Public License version 3,
- * which covers the main part of arduino-cli.
- * The terms of this license can be found at:
- * https://www.gnu.org/licenses/gpl-3.0.en.html
- *
- * You can be released from the requirements of the above licenses by purchasing
- * a commercial license. Buying such a license is mandatory if you want to modify or
- * otherwise use the software for commercial activities involving the Arduino
- * software without disclosing the source code of your own applications. To purchase
- * a commercial license, send an email to license@arduino.cc.
- */
+// This file is part of arduino-cli.
+//
+// Copyright 2020 ARDUINO SA (http://www.arduino.cc/)
+//
+// This software is released under the GNU General Public License version 3,
+// which covers the main part of arduino-cli.
+// The terms of this license can be found at:
+// https://www.gnu.org/licenses/gpl-3.0.en.html
+//
+// You can be released from the requirements of the above licenses by purchasing
+// a commercial license. Buying such a license is mandatory if you want to
+// modify or otherwise use the software for commercial activities involving the
+// Arduino software without disclosing the source code of your own applications.
+// To purchase a commercial license, send an email to license@arduino.cc.
 
 package packagemanager
 
 import (
+	"encoding/json"
 	"fmt"
+	"runtime"
 
 	"github.com/arduino/arduino-cli/arduino/cores"
+	"github.com/arduino/arduino-cli/arduino/cores/packageindex"
+	"github.com/arduino/arduino-cli/executils"
+	"github.com/pkg/errors"
 )
 
 // InstallPlatform installs a specific release of a platform.
@@ -30,7 +33,53 @@ func (pm *PackageManager) InstallPlatform(platformRelease *cores.PlatformRelease
 		"hardware",
 		platformRelease.Platform.Architecture,
 		platformRelease.Version.String())
-	return platformRelease.Resource.Install(pm.DownloadDir, pm.TempDir, destDir)
+	if err := platformRelease.Resource.Install(pm.DownloadDir, pm.TempDir, destDir); err != nil {
+		return errors.Errorf("installing platform %s: %s", platformRelease, err)
+	}
+	if d, err := destDir.Abs(); err == nil {
+		platformRelease.InstallDir = d
+	} else {
+		return err
+	}
+	if err := pm.cacheInstalledJSON(platformRelease); err != nil {
+		return errors.Errorf("creating installed.json in %s: %s", platformRelease.InstallDir, err)
+	}
+	return nil
+}
+
+func (pm *PackageManager) cacheInstalledJSON(platformRelease *cores.PlatformRelease) error {
+	index := packageindex.IndexFromPlatformRelease(platformRelease)
+	platformJSON, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return err
+	}
+	installedJSON := platformRelease.InstallDir.Join("installed.json")
+	installedJSON.WriteFile(platformJSON)
+	return nil
+}
+
+// RunPostInstallScript runs the post_install.sh (or post_install.bat) script for the
+// specified platformRelease.
+func (pm *PackageManager) RunPostInstallScript(platformRelease *cores.PlatformRelease) error {
+	if !platformRelease.IsInstalled() {
+		return errors.New("platform not installed")
+	}
+	postInstallFilename := "post_install.sh"
+	if runtime.GOOS == "windows" {
+		postInstallFilename = "post_install.bat"
+	}
+	postInstall := platformRelease.InstallDir.Join(postInstallFilename)
+	if postInstall.Exist() && postInstall.IsNotDir() {
+		cmd, err := executils.NewProcessFromPath(postInstall)
+		if err != nil {
+			return err
+		}
+		cmd.SetDirFromPath(platformRelease.InstallDir)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // IsManagedPlatformRelease returns true if the PlatforRelease is managed by the PackageManager
