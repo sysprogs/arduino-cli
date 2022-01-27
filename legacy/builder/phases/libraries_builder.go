@@ -130,7 +130,7 @@ func compileLibraries(ctx *types.Context, libraries libraries.List, buildPath *p
 			effectiveProperties = unoptimizedProperties
 		}
 		
-		effectiveProperties = builder_utils.ExpandSysprogsExtensionProperties(effectiveProperties)	
+		effectiveProperties = builder_utils.ExpandSysprogsExtensionProperties(effectiveProperties, "lib")
 	
 		libraryObjectFiles, err := compileLibrary(ctx, library, buildPath, effectiveProperties, includes, libraryModel)
 		if err != nil {

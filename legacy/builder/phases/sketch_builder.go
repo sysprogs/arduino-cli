@@ -45,7 +45,7 @@ func (s *SketchBuilder) Run(ctx *types.Context) error {
 		buildProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
 	}
 	
-	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties)	
+	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties, "sketch")	
 
 	objectFiles, err := builder_utils.CompileFiles(ctx, sketchBuildPath, false, sketchBuildPath, buildProperties, includes, sketchModel)
 	if err != nil {

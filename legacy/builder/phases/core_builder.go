@@ -61,7 +61,7 @@ func (s *CoreBuilder) Run(ctx *types.Context) error {
 		buildProperties = builder_utils.RemoveOptimizationFromBuildProperties(buildProperties)
 	}
 	
-	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties)
+	buildProperties = builder_utils.ExpandSysprogsExtensionProperties(buildProperties, "core")
 	
 	archiveFile, objectFiles, err := compileCore(ctx, coreBuildPath, coreBuildCachePath, buildProperties, coreModel)
 	if err != nil {

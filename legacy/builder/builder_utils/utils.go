@@ -125,11 +125,11 @@ func RemoveOptimizationFromBuildProperties(properties *properties.Map) *properti
 	return result
 }
 
-func ExpandSysprogsExtensionProperties(properties *properties.Map) *properties.Map {
+func ExpandSysprogsExtensionProperties(properties *properties.Map, subtype string) *properties.Map {
 	var result = properties.Clone()
 
-	result.Set("compiler.c.flags", result.Get("compiler.c.flags") + " " + result.Get("com.sysprogs.extraflags"))
-	result.Set("compiler.cpp.flags", result.Get("compiler.cpp.flags") + " " + result.Get("com.sysprogs.extraflags"))
+	result.Set("compiler.c.flags", result.Get("compiler.c.flags") + " " + result.Get("com.sysprogs.extraflags") + " " + result.Get("com.sysprogs.extraflags." + subtype))
+	result.Set("compiler.cpp.flags", result.Get("compiler.cpp.flags") + " " + result.Get("com.sysprogs.extraflags") + " " + result.Get("com.sysprogs.extraflags." + subtype))
 	return result
 }
 
