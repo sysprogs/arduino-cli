@@ -133,7 +133,11 @@ func ExpandSysprogsExtensionProperties(properties *properties.Map, subtype strin
 	return result
 }
 
-
+func ExpandSysprogsLinkerProperties(properties *properties.Map) *properties.Map {
+	var result = properties.Clone()
+	result.Set("compiler.ldflags", result.Get("compiler.ldflags") + " " + result.Get("com.sysprogs.extraflags.ld"))
+	return result
+}
 
 func findFilesInFolder(sourcePath *paths.Path, extension string, recurse bool) (paths.PathList, error) {
 	files, err := utils.ReadDirFiltered(sourcePath.String(), utils.FilterFilesWithExtensions(extension))
